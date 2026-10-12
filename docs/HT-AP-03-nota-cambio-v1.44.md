@@ -1,7 +1,9 @@
 # HT-AP-03 — Nota de cambio v1.44 (08/10/2026)
 
-> **Estado: solo en `staging`.** No promovido a `main`. Requiere el OK de
-> Luis Devoto (más confirmación adicional si el push cae en horario laboral).
+> **Estado: en producción desde el 08-10-2026** (rama `main`, commit `11dcc9a`), con la orden
+> explícita de Luis Devoto.
+> Documentación: hoja de actualización de HT-AP-03 (`docs/sharepoint/HTAP03_v1.44_hoja_de_actualizacion.docx`)
+> y del manual HT-IN-05 v11 (`docs/sharepoint/HTIN05_v11_hoja_de_actualizacion.docx`), pendientes de publicar en SharePoint.
 
 ## OT: de "bloquear" a "alertar"
 

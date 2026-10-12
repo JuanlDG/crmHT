@@ -1,9 +1,9 @@
 # HT-AP-03 — Nota de cambio v1.46 (09/10/2026)
 
-> **Estado: solo en rama de desarrollo / `staging`.** No promovido a `main`.
-> Requiere el OK de Luis Devoto (más confirmación adicional si el push cae en
-> horario laboral). **Documentar como instructivo en SharePoint antes de pasar
-> a producción**, según la norma de la empresa.
+> **Estado: en producción desde el 12-10-2026** (rama `main`, commit `684ade2`), con la orden
+> explícita de Luis Devoto.
+> Documentación: hoja de actualización de HT-AP-03 (`docs/sharepoint/HTAP03_v1.46_hoja_de_actualizacion.docx`)
+> y del manual HT-IN-05 v13 (`docs/sharepoint/HTIN05_v13_hoja_de_actualizacion.docx`), pendientes de publicar en SharePoint.
 
 ## Mensajes de WhatsApp dentro de la ventana de 24 h: sin plantilla
 
