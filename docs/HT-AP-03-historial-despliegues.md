@@ -1,0 +1,539 @@
+# HT-AP-03 — Historial de despliegues y decisiones
+
+Movido desde `CLAUDE.md` el 12-10-2026 para que ese archivo contenga solo las
+reglas vigentes. El texto se conserva tal cual (trazabilidad), salvo la
+corrección del estado de v1.44, que figuraba "solo en `staging`" y fue promovida
+a `main` el 08-10-2026 (`11dcc9a`). Lo que sigue abierto está en
+`docs/HT-AP-03-pendientes.md`.
+
+## Decisiones de Luis Devoto sobre las reglas de despliegue (12-10-2026)
+
+- Su orden explícita de promover a `main` basta: no se pide confirmación
+  adicional por horario laboral (reemplaza esa parte de la regla del 29-09-2026).
+- Los feriados no cuentan como horario laboral.
+- Cualquier paso a producción se hace solo con su OK y con su criterio, no con
+  el de Claude; incluye errores críticos (sin bypass: se le avisa y se espera).
+- Origen de la restricción de horario (07-08-2026): ver más abajo; la posible
+  relación entre un despliegue y la desconexión de un usuario nunca se confirmó.
+
+## Incidente del 10-10-2026: push a `main` bloqueado por el clasificador del modo auto
+
+El 08-10 el push a `main` salió sin bloqueo; el 10-10 el clasificador de
+permisos del modo auto de Claude Code lo rechazó dos veces con
+`[Production Deploy]`, aun con el OK de Luis en el chat. Causa del cambio sin
+determinar: no hay `.claude/settings.json` en el repo, ningún commit toca
+permisos y el changelog de Claude Code 2.1.286 a 2.1.296 no menciona cambios al
+criterio de `git push`. La documentación no dice si un push a `main` que dispara
+despliegue cuenta como "Production deploy". El 12-10 el mismo push pasó con una
+orden de Luis que nombraba commits y destino. Según la documentación, el OK en
+el chat cuenta solo si es específico. La regla `permissions.allow` no está
+probada contra este bloqueo.
+
+## Regla de despliegue vigente del 29-09-2026 al 12-10-2026 (texto original, reemplazada)
+
+Instrucción explícita de Luis Devoto — reemplaza las dos reglas de abajo
+("Despliegue a producción" del 07-08-2026 y "Modo actual: todo se acumula
+en staging" del 10-08-2026), que entre las dos generaban confusión sobre
+cuándo hacía falta pedir confirmación y de qué tipo:
+
+- **Se promueve a `main` (producción) solo con el OK de Luis Devoto.** No
+  hace falta que el cambio sea la corrección de un error — puede ser
+  cualquier cambio, mejora o feature nueva incluida. No preguntar si es
+  "error o mejora": eso ya no decide nada.
+- **Si el push ocurre en horario laboral** (lunes a viernes, 9:00 a 17:30
+  hrs, hora de Chile), se pide una confirmación adicional a Luis Devoto
+  antes de promover — puntual para ese push, no basta con el OK general.
+- **Nunca se promueve a producción sin autorización de Luis Devoto, ni
+  siquiera si es un error crítico** — no hay bypass automático por "no
+  puede esperar"; si es urgente, se le avisa y se le pide el OK igual,
+  no se promueve antes de tenerlo.
+
+`staging` sigue sin esta restricción — se puede promover ahí en cualquier
+momento, para pruebas o para acumular cambios, sin pedir autorización.
+
+Las reglas de abajo (horario del 07-08-2026 y "solo por error" del
+10-08-2026) quedan sin efecto, reemplazadas por esta; se conservan tal
+cual para registro histórico.
+
+## Histórico — reglas de despliegue anteriores (07-08-2026 a 29-09-2026)
+
+Reemplazadas por la regla de arriba (29-09-2026). Se conserva el texto
+original sin modificar, para trazabilidad.
+
+### Despliegue a producción (vigente desde 07-08-2026 hasta 29-09-2026)
+
+Promover cambios a `main` (producción) **solo fuera del horario de trabajo
+de la empresa**, salvo que se trate de un **error crítico** que no pueda
+esperar (el sistema caído, un flujo de venta bloqueado, pérdida de datos).
+
+Origen de la regla: el 07-08-2026 se promovió a producción una tanda
+importante de cambios (v1.24) durante horario de trabajo. Ese mismo día un
+usuario (Nicolás Quezada) reportó haber sido desconectado de su sesión dos
+veces mientras cotizaba, perdiendo el borrador de una cotización extensa.
+Luis Devoto planteó como hipótesis que ambas cosas estén relacionadas. **No
+se confirmó una relación causal** — no se investigó si un despliegue puede
+efectivamente cerrar la sesión de un usuario activo — pero la regla se
+adopta de todas formas como precaución.
+
+Antes de hacer `git push origin main` (o cherry-pick a `main`):
+- Confirmar que es fuera de horario de trabajo, o que el cambio es un
+  error crítico.
+- Si Gerencia pide explícitamente promover algo en horario de trabajo,
+  confirmar que entiende que se aparta de esta regla antes de proceder.
+- `staging` no tiene esta restricción — se puede promover ahí en cualquier
+  momento para pruebas.
+
+**Excepción — cambios de solo documentación:** si el cambio es exclusivamente
+a `docs/`, `CLAUDE.md`, o `README.md` (sin tocar `backend/` ni `frontend/`),
+no afecta el comportamiento de la aplicación desplegada — se puede subir a
+`staging` y `main` en simultáneo, en cualquier horario, sin esperar la
+ventana fuera de horario. Confirmado explícitamente por Luis Devoto
+(07-08-2026).
+
+Ver `docs/HT-AP-03-nota-cambio-v1.24.md` y
+`docs/HT-AP-03-documento-consolidado.md` (§17) para el registro completo.
+
+### Modo actual: todo se acumula en staging (vigente desde 10-08-2026 hasta 29-09-2026)
+
+Instrucción explícita de Luis Devoto, más restrictiva que la regla de
+horario de arriba: **por ahora, solo se promueve a `main` si hay un error**
+que corregir — nunca por una mejora o feature nueva, aunque sea fuera de
+horario. Las mejoras y features nuevas quedan acumulándose en `staging`
+hasta que se avise lo contrario.
+
+Antes de cualquier `git push origin main` (o cherry-pick a `main`) que no
+sea la excepción de solo documentación de arriba:
+- Confirmar que el cambio es la corrección de un error (algo que dejó de
+  funcionar), no una mejora — si hay duda, preguntar antes de promover.
+- Si es una corrección de error, sigue aplicando la regla de horario de
+  arriba salvo que sea crítico.
+
+**Excepción puntual (16-09-2026):** Luis Devoto pidió explícitamente
+promover a `main` todo lo acumulado en `staging` **excepto** Cobranza y
+Operaciones ("Arranque de Trabajos") — instrucción específica para esa
+tanda, no un levantamiento general de la regla. Los próximos cambios
+vuelven a necesitar la misma confirmación de error-no-mejora salvo que se
+avise lo contrario otra vez.
+
+## Pendientes (actualizado 12-10-2026, promoción a `main`)
+
+**Promoción a `main` del 12-10-2026 (feriado en Chile, fuera de horario laboral,
+con el OK explícito de Luis Devoto): v1.45, v1.46 y v1.47. Falta confirmar que
+Railway quede en Success.** Commits en `main` (`11dcc9a..16775b5`): `aab0e7c`
+(v1.45, retirar "Factura sugerida"), `684ade2` (v1.46, WhatsApp sin plantilla
+en ventana de 24 h), `5c1d091` (v1.47, marcar como atendida sin cerrar) y
+`16775b5` (documentación). Tomados de `staging` por cherry-pick en la rama
+`claude/peaceful-hawking-f0xdcq`. No incluye Cobranza ni la integración con
+Mantenimiento (v1.41), ni `middleware/auth.js`, `routes/auth.js`,
+`services/email.js` ni `Usuarios.jsx`.
+Probada según las lecciones del 23-09 y 01-10: clon limpio con el comando de
+build de `railway.json`, sin enlaces simbólicos, schema de `main` creado primero
+y el código de la rama encima, barrido de endpoints autenticados con 6 roles sin
+500 atribuibles al cambio. Migraciones: `whatsapp_mensajes.canal_envio` y
+`whatsapp_conversaciones.atendida_*` (`IF NOT EXISTS`). Dar por buena la
+promoción solo con el estado **Success** en Railway. Falta probar v1.46 (fuera
+de ventana y botones) y v1.47 con WhatsApp real, y el instructivo en SharePoint.
+
+**Incidente del 10-10-2026: el push a `main` fue bloqueado por el clasificador
+del modo auto de Claude Code.** El 08-10 el push a `main` salió sin bloqueo; el
+10-10 el clasificador lo rechazó dos veces con `[Production Deploy]`, aun con el
+OK de Luis en el chat. Causa del cambio sin determinar: no hay
+`.claude/settings.json` en el repo, ningún commit toca permisos y el changelog
+de Claude Code 2.1.286 a 2.1.296 no menciona cambios al criterio de `git push`
+(la documentación no dice si un push a `main` que dispara despliegue cuenta como
+"Production deploy"). El 12-10 el mismo push pasó con una orden de Luis que
+nombraba commits y destino. Según la documentación, el OK en el chat cuenta solo
+si es específico (nombra acción, rama/commits y destino). Para promover: pedir
+la orden con los commits y el destino; si se bloquea, no esquivarlo por otra
+vía (merge desde GitHub): avisar a Luis. La regla `permissions.allow` no está
+probada contra este bloqueo.
+
+## Pendientes (actualizado 10-10-2026)
+
+**Bandeja: "Marcar como atendida" sin cerrar (v1.47, promovido a `main` el 12-10-2026).**
+Pedido de Luis Devoto: antes había que cerrar la conversación para sacarla de
+pendientes, lo que bloquea el texto libre. Ahora "atendida" es una marca aparte
+(`whatsapp_conversaciones.atendida_manual`): sale de pendientes y de las
+alertas, no toca la ventana de 24 h y se borra sola si el cliente escribe.
+Cerrar implica atendida, sin cambios. Ver `docs/HT-AP-03-nota-cambio-v1.47.md`.
+Falta probar con usuarios reales y documentar como instructivo.
+
+## Pendientes (actualizado 09-10-2026)
+
+**WhatsApp sin plantilla dentro de la ventana de 24 h (v1.46, promovido a `main`
+el 12-10-2026).** Pedido de Luis Devoto: las 3 plantillas están en
+Marketing (78,49 CLP c/u). Con cliente que escribió hace <23 h, el envío de
+cotización y los pasos de secuencia (envío, seguimiento, vencimiento) salen
+como texto libre o mensaje con botones (gratis); fuera de ventana, plantilla
+como antes. Ver `docs/HT-AP-03-nota-cambio-v1.46.md`. Falta probar con
+WhatsApp real y documentar como instructivo. Fuera del código: pasar "Seguimiento" y "Vencimiento" a Utilidad en Meta.
+
+## Pendientes (actualizado 08-10-2026)
+
+**"Factura sugerida" retirada (v1.45, promovido a `main` el 12-10-2026).** No funcionó
+(RUT + monto exacto repite el mismo monto en muchos negocios del mismo cliente).
+Se quitó la insignia del Pipeline, la pestaña de Reportería Softland y los
+endpoints; las columnas de `reporte_softland_facturas` se conservan. Ver
+`docs/HT-AP-03-nota-cambio-v1.45.md`. Siguiente: mover a Facturado desde Softland por NV/OC.
+
+**OT: de bloquear a alertar (v1.44, promovido a `main` el 08-10-2026, commit `11dcc9a`).** Pedido de Luis
+Devoto: las exigencias de Programado/Ejecutado frenaban el uso del Pipeline.
+Ya no bloquean (solo el tipo de trabajo y la causa de no cierre); lo que falta
+se ve en rojo en la tarjeta y llega por correo diario a las 8:00 (vendedor lo
+suyo, jefe comercial todo). El reporte OT's avisa de las OT incompletas. Ver
+`docs/HT-AP-03-nota-cambio-v1.44.md`. Plan en curso: (1) esto, (2) leer Excel/informes de
+Fracttal para mover a Ejecutado, (3) integraciones (Softland → Facturado, sacar
+"factura sugerida" que no funcionó por cruzar solo RUT + monto).
+
+## Pendientes (actualizado 01-10-2026)
+
+**Promoción a `main` del 01-10-2026 (en horario laboral, con el OK explícito
+de Luis Devoto) — Operaciones: Arranque de Trabajos completo + programación
+de la OT (v1.34 y v1.40). EN PRODUCCIÓN Y CONFIRMADO POR LUIS.** Commits en
+`main`: `ee000f3` (la promoción) y `60cd435` (fix del build, ver abajo). Instrucción de Luis: pasar solo lo de Operaciones;
+**Cobranza sigue en `staging`, excluida**. La rama `staging` no se pudo fusionar
+(390 commits "por delante" que en buena parte ya están en `main` con otro SHA),
+así que se armó una rama desde `main` tomando de `staging` solo los archivos de
+Operaciones y, en los archivos compartidos (`db.js`, `users.js`, `server.js`,
+`App.jsx`, `Layout.jsx`), solo los bloques sin Cobranza. No se promovió nada de
+`middleware/auth.js`, `routes/auth.js`, `services/email.js` ni `Usuarios.jsx`
+(solo tenían cambios de Cobranza).
+
+- **Qué incluye**: tipo de trabajo obligatorio al pasar a "Aceptado", Orden de
+  Trabajo automática con plantillas (Config → Plantillas de Orden de Trabajo),
+  PDF de la OT y su sección en el informe de Postventa, programación y ejecución
+  de la OT (fecha programada, horas programadas, técnicos, fecha de ejecución,
+  horas ejecutadas, ID Fracttal; las reglas aplican solo a OT nuevas), botón
+  "Ver OT" en el Pipeline, pestaña "OT's" en Reportes (cantidad, valor, por
+  técnico, por tipo, brecha de fechas y de horas) y reportes `ots_*` para
+  Cowork, el técnico ve sus OT asignadas en Tareas (solo lectura, sin precios)
+  y entra a Tareas al iniciar sesión, gerencia ve las de todos los técnicos,
+  importador de oportunidades con las columnas nuevas y alerta en Config →
+  Pipeline si cambian los nombres de Aceptado/Programado/Ejecutado. Ver
+  `docs/HT-AP-03-nota-cambio-v1.34.md` y `docs/HT-AP-03-nota-cambio-v1.40.md`.
+- **Migración de schema** (en `db.js`, con `IF NOT EXISTS`): `negocios.tipo_trabajo`,
+  tablas `ordenes_trabajo`, `ot_items`, `ot_plantilla_items`, `ot_tecnicos`. Las
+  OT que existan al desplegar quedan exentas de las reglas nuevas
+  (`exige_programacion = false`, migración `ot_programacion_v1.40`). No crea
+  nada de Cobranza.
+- **Cómo se probó** (lección del 23-09): base creada con el schema de `main`
+  (sin tablas de OT ni de Cobranza) y encima el código a promover; ~40 endpoints
+  autenticados con admin, vendedor, técnico y gerencia sin ningún 500; negocios
+  que ya estaban en Aceptado y Programado sin OT; reglas de cada etapa,
+  importador, reportes, PDF, permisos del técnico; frontend compilado y revisado
+  en navegador. Búsqueda de referencias a objetos de Cobranza en el código
+  promovido: ninguna. Tras el push hay que verificar producción.
+- **Incidente del primer despliegue**: `ee000f3` falló en Railway ("cannot
+  replace to directory .../backend/node_modules with file"): el commit llevaba
+  por error dos **enlaces simbólicos** `backend/node_modules` y
+  `frontend/node_modules`, creados solo para probar en una carpeta temporal.
+  `.gitignore` ignora `node_modules/` (carpetas), no enlaces, y `git add -A` los
+  incluyó. Producción no se cayó (Railway conserva el despliegue anterior si el
+  build falla), pero la verificación con el conector leyó la versión **vieja** y
+  se informó "estable" antes de tiempo. Corregido con `60cd435` (borra solo esos
+  dos archivos), probado antes con un clon limpio y el comando de build de
+  `railway.json`.
+- **Lecciones para la próxima promoción** (Cobranza): revisar la lista de
+  archivos del commit antes del push (`git diff --stat origin/main HEAD` y
+  `git ls-files -s | grep ^120000`); no usar `git add -A` en carpetas de prueba
+  con enlaces; reproducir el build desde un clon limpio; y dar por buena la
+  promoción solo con el estado **Success** del despliegue en Railway, no con una
+  consulta al conector. Procedimiento completo en el consolidado, §17.
+- **Pendiente al desplegar**: los 31 negocios en Programado y 24 en Ejecutado
+  que ya existían no tienen OT (al moverlos se piden los datos); hacen falta
+  usuarios con rol `tecnico` para asignar técnicos.
+- **Cobranza**: sigue en `staging` sin promover (módulo con desarrollo pendiente).
+  `staging` conserva su propio historial; al promover Cobranza hay que repetir
+  este procedimiento por archivo, no fusionar la rama.
+
+## Pendientes (actualizado 30-09-2026)
+
+**Promoción a `main` del 30-09-2026 (≈17:45 hora de Chile, fuera de
+horario).** Instrucción explícita de Luis Devoto: lo hecho en la sesión de
+análisis de oportunidades más los cambios de Despacho del día. **Cobranza y
+Operaciones ("Arranque de Trabajos") siguen en `staging`, excluidos.**
+Commits en `main`: `c9e59d2` y `64da76c` (Despacho), `82a10d5` (API v1 de
+lectura, nota de cambio v1.38). No toca `db.js`: sin migración de schema.
+
+- **Despacho**: vista por defecto con las paradas de hoy más los atrasados
+  sin completar ("hoy" en hora de Chile) y orden por columna; agrupar por
+  dirección (misma parada y fecha) con interruptor.
+- **API v1, endpoints de solo lectura para análisis** (ver
+  `docs/HT-AP-03-nota-cambio-v1.38.md`): `GET /cotizaciones`,
+  `/whatsapp/mensajes` (por rango de fechas), `/softland/{cotizaciones,
+  notas-venta,facturas}` y `/seguimientos`; `/negocios` suma `offset`, tope
+  500, monto neto y causa de pérdida; el hilo de WhatsApp suma `lead_id` y
+  `negocio_id` por mensaje. Decisión de Luis: se excluyen solo los
+  contactos anonimizados; las conversaciones archivadas se incluyen.
+- **Cómo se probó** (lección del 23-09): servidor real + Postgres con el
+  schema de `main`, endpoints autenticados, Despacho en sus tres vistas con
+  token de usuario real y el frontend compilando. Tras el push se verificó
+  producción con el conector (los campos nuevos ya aparecen).
+
+**Conector MCP** (repo `ldevoto-sys/crm-mcp-hidrotecnica`; Railway, proyecto
+CRM-MCP). Dos ambientes, ambos con despliegue automático al hacer push:
+Production (servicio `adequate-grace`) y Staging (`crm-mcp-hidrotecnica`).
+Hasta el 30-09 desplegaban desde `claude/branch-update-tetvwa`, la única
+rama con las herramientas de WhatsApp (`main` del repo tiene 7 herramientas,
+no 10). Desde el 30-09 Production despliega desde
+`claude/fervent-carson-dgwu65` (commit `1e38354`, confirmado en Railway) y
+Staging quedó apuntando a esa rama. Son 14 herramientas: las 10 de consulta
+con `readOnlyHint` y las 4 que escriben sin marca, a propósito (no se debe
+aflojar su aprobación). Verificado por Luis en producción con datos reales:
+3 de las 4 herramientas nuevas; `crm_softland_documentos` devolvió 0 filas
+para agosto-septiembre, lo esperado (las cotizaciones de Softland llegan
+hasta jul-2026), pero aún no se probó con un rango que tenga datos.
+
+**Pendientes**
+- **MCP**: fusionar la rama a `main` del repo y apuntar ambos ambientes a
+  `main`. Hoy despliegan desde una rama con nombre provisional, y cada push
+  a esa rama redespliega el ambiente.
+- **Verificar**: Softland con un rango que tenga datos (cotizaciones de
+  julio; notas de venta y facturas de agosto-septiembre), y desde qué fecha
+  hay datos en cotizaciones, mensajes y seguimientos (usar `limit=1` y leer
+  `total`, sin leer datos de clientes).
+- **Mensajes de WhatsApp**: la primera página de agosto-septiembre partía el
+  31-08 y no aparecían los ids 1 a 7. Causa sin determinar; hay una
+  consulta de diagnóstico preparada (solo lectura), aún no ejecutada.
+- **Softland**: la historia anterior a 2023-01-01 no está replicada. Falta
+  decidir si hace falta.
+- **Fase 2, sin iniciar**: causa de pérdida "Otro" con comentario
+  obligatorio, análisis de las pérdidas sin respuesta, y un endpoint para
+  enviar informes por correo (destinatarios solo `@hidrotecnica.cl`, tope de
+  envíos y registro de cada envío). Sin ese endpoint el agente no puede
+  entregar informes periódicos por sí solo. Los informes periódicos mismos
+  están por definir.
+- **Decisión pendiente**: `GET /api/v1/whatsapp/conversaciones/:id/mensajes`
+  sigue devolviendo el hilo de un contacto anonimizado si se conoce su id
+  (la anonimización no toca los mensajes: alcance acotado validado con
+  Gerencia, ver `services/privacidad.js`). El listado masivo nuevo sí los
+  excluye.
+- **Dato técnico**: `initDb()` pasa a mayúsculas los nombres de contactos en
+  cada arranque, así que un contacto anonimizado queda como `(ELIMINADO)`,
+  no `(Eliminado)`. Cualquier filtro debe comparar sin distinguir
+  mayúsculas.
+- **Seguridad**: rotar `BI_READONLY_PASSWORD` y la clave del rol
+  `reportes_solo_lectura` (esta última quedó escrita en una conversación con
+  Claude el 30-09). La API key de Cowork sigue siendo una sola para lectura
+  y escritura.
+- **Costos**: el ambiente Staging del MCP tiene un servicio Postgres con
+  volumen que el código del conector no usa. Por revisar.
+
+**Cobranza** y **Operaciones — "Arranque de Trabajos"**: siguen en
+`staging`, excluidos de esta promoción, como en las anteriores.
+
+## Pendientes (histórico, actualizado 23-09-2026)
+
+**Promoción a `main` del 23-09-2026 — primer intento falló, producción
+quedó caída ~15 minutos, revertida y vuelta a promover con la causa
+corregida.** Instrucción explícita de Luis Devoto, fuera de horario — "un
+solo gran paso, dejando afuera Cobranza y Órdenes de Trabajo".
+
+- **Primer intento** (commits `e0038bc`..`026ff3f`): después del push,
+  Dashboard, Cotizaciones y Reportería dejaron de cargar ("Error interno"
+  / "No se pudo cargar") — afectaba **cualquier** llamada autenticada a
+  la API. Revertido de inmediato (PR #1, commits `b539d96`+merge) para
+  restablecer el servicio.
+- **Causa raíz**: al armar la promoción se excluyó correctamente la
+  columna `users.es_encargado_cobranza` de la migración (es de Cobranza,
+  que sigue sin promover) revisando archivo por archivo los que la
+  mencionaban — pero `backend/middleware/auth.js` no estaba en esa lista
+  de revisión manual (se copió tal cual desde `staging`, se asumió
+  "limpio") y seguía consultando esa columna en **cada** request
+  autenticado (caché de 60s de rol/estado del usuario, auditoría
+  23-09-2026 M-M2). Sin la columna, esa consulta fallaba siempre → toda
+  la API devolvía 500.
+- **Lección**: la clasificación "archivo limpio, se copia tal cual" se
+  basó en si el archivo *tenía cambios* de Cobranza/OT en su diff, no en
+  si *dependía en tiempo de ejecución* de algo que Cobranza/OT agregan en
+  otro archivo (acá, una columna que agrega `db.js`). La prueba previa a
+  promover (`initDb()` contra Postgres real) tampoco lo detectó porque
+  solo validó que la migración corriera sin error — no que cada endpoint
+  autenticado respondiera después. Corregido y confirmado esta vez
+  probando el flujo completo: servidor real + Postgres real + token real
+  contra `/api/negocios`, `/api/cotizaciones`, `/api/reportes/actividad-mes`
+  y `/api/reportes/whatsapp/resumen-mensual`, los cuatro en 200.
+- **Segunda promoción** (commits `e0038bc`, `c1907c0`, `0c65aa5`,
+  `b4b0714` + fix `d472d27`, mismo contenido que el primer intento más el
+  fix de `middleware/auth.js`):
+- **Seguridad** (auditoría 23-09-2026): errores no capturados que
+  tumbaban el servidor, whitelist de tipo de adjunto + descarga forzada
+  a "attachment" (evita XSS por HTML/SVG), rol BI acotado a columnas no
+  sensibles de `users`, huecos de permisos entre vendedores (notas,
+  tareas, leads, negocios), acceso total a la Bandeja restringido por
+  rol, `must_change_password` exigido también en el backend, token de
+  reset de contraseña con hash, inyección HTML en informes/emails desde
+  WhatsApp, inyección de fórmulas en CSV, comparación de API keys en
+  tiempo constante, firma de webhook de WhatsApp con fallo cerrado si
+  falta el secreto, guardia SSRF en descarga de imágenes para PDF. Ver
+  `docs/HT-AP-03-nota-cambio-v1.36.md` (incluye también lo de Cobranza,
+  que **no** se promovió).
+- **WhatsApp — tiempo de respuesta por vendedor**: cada mensaje guarda
+  el timestamp real de Meta (antes solo se aproximaba con el mensaje más
+  reciente de toda la bandeja). Reporte nuevo (tramo cuenta desde el
+  primer mensaje del cliente sin responder, no el último), calculado
+  cada noche a las 23:50 hora Chile más botón "Actualizar" a pedido, sin
+  backfill histórico (solo hacia adelante desde hoy). Pestaña "WhatsApp"
+  nueva en Reportería (resumen mensual, por vendedor, conversaciones
+  abiertas ahora con link directo a la Bandeja en pestaña nueva),
+  expuesto también vía `GET /api/v1/reportes/:tipo` para Cowork.
+- **WhatsApp — plantilla desde la ficha de contacto**: se puede reabrir
+  conversación con la plantilla de seguimiento desde Contactos o la
+  ficha del contacto, sin necesitar un lead o conversación previa.
+- **Sincronización de vendedor**: reasignar el vendedor de un contacto
+  ahora sincroniza también su lead más reciente y sus negocios abiertos
+  (los cerrados, ganados o perdidos, nunca se tocan); y viceversa desde
+  el lead. Corrige el bug reportado del selector "Asignado a" que no
+  funcionaba en conversaciones cerradas. Ver
+  `docs/HT-AP-03-nota-cambio-v1.37.md`.
+
+**Cobranza**: sigue en `staging`, explícitamente excluida de esta
+promoción — módulo con desarrollo pendiente (incluye las correcciones de
+la auditoría 23-09-2026 específicas de Cobranza: conciliación
+transaccional, tope de redondeo).
+
+**Operaciones — "Arranque de Trabajos"**: sigue en `staging`,
+explícitamente excluido de esta promoción. Ver detalle completo de la
+Fase 1 más abajo.
+
+**Pendiente fuera de código para Luis en Railway** (de la auditoría, no
+ligado a la promoción): rotar `BI_READONLY_PASSWORD`.
+
+## Pendientes (histórico, actualizado 16-09-2026)
+
+**Promovido a `main` el 16-09-2026** (instrucción explícita de Luis
+Devoto — ver excepción puntual arriba), commits `ff15bf8`..`b090ddc`:
+- **Postventa**: aviso por correo al encargado al crear un caso nuevo,
+  nombre del cliente con link a su ficha, folio (`PV-000001`), cierre con
+  comentario obligatorio, edición ampliada del caso (título/descripción/
+  producto/negocio de origen/referencia de cotización o venta), y botón
+  **"Generar informe"** (PDF con portada + datos del caso + fotos + tabla
+  de otros adjuntos + cotización vigente del negocio, fusionados con
+  pdf-lib). **Sin la sección de Orden de Trabajo** que tiene en `staging`
+  (commit `e77989c`, adaptado de `9e3195c`) — la OT depende de Arranque de
+  Trabajos, que sigue sin promover; se agrega cuando esa fase se promueva.
+- **Alertas de respuesta WhatsApp**: escalamiento acumulativo vendedor →
+  callcenter → jefe comercial → gerencia cuando un cliente ya derivado
+  queda sin responder (umbrales configurables en `Config → Alertas de
+  respuesta WhatsApp`, horario hábil con feriados/excepciones editables a
+  mano en `Config → Bot de WhatsApp`), aviso por correo y por Microsoft
+  Teams (Workflow — requiere `TEAMS_WEBHOOK_URL` en Railway producción,
+  **falta configurarla** si se quiere el canal Teams ahí; sin ella el
+  sistema sigue funcionando solo por correo). Cubre también leads sin
+  asignar y el cierre automático del bot de recontacto. "Cerrar
+  conversación" apaga la alerta. Buscador de `Config` con alias por
+  palabra clave (no solo el título de cada ítem).
+
+**Lo demás del 06-09-2026 sigue vigente sin cambios** (ver abajo):
+migración de WhatsApp oficial, herramienta de reenvío entre entornos, Ley
+21.719 — todo ya en producción desde antes.
+
+**Cobranza**: sigue en `staging`, explícitamente excluido de la promoción
+de hoy — módulo con desarrollo pendiente.
+
+**Operaciones — "Arranque de Trabajos"**: sigue en `staging`, explícitamente
+excluido de la promoción de hoy. Ver detalle completo de la Fase 1 más abajo.
+
+## Pendientes (histórico, actualizado 06-09-2026)
+
+**Migración del WhatsApp oficial — COMPLETADA (06-09-2026).**
+
+Estado final en producción:
+- **+56 9 8106 2974 es el número comercial real** (`WHATSAPP_PHONE_NUMBER_ID`
+  en Railway producción = `1339808529211189`). Es el número publicado en el
+  sitio web — recibía ~200 contactos/semana atendidos hasta el 05-09-2026
+  por un chatbot externo (chatbot.saaspro.br); desde ahora los atiende el
+  CRM (bot de categorización, asignación de vendedor, todo el flujo
+  comercial completo).
+- **+56 9 8109 8161** (el número que usaba el CRM hasta esta migración,
+  con historial real de clientes) **pasó a ser el número de pruebas**:
+  se reenvía a `staging` vía `WHATSAPP_REENVIO_PHONE_NUMBER_ID` +
+  `WHATSAPP_REENVIO_URL` + `WHATSAPP_REENVIO_SECRETO` (mismo secreto en
+  ambos entornos). Ya no lo atiende nadie del equipo comercial — solo
+  sirve para pruebas de desarrollo, con base de datos separada (staging).
+- Ambos números viven bajo la misma app de Meta ("Hidrotecnica",
+  `WhatsApp Business account ID: 1115263817731903`) — mismo
+  `WHATSAPP_ACCESS_TOKEN` y `WHATSAPP_APP_SECRET` sirven para los dos, no
+  hizo falta soporte multi-secreto en `firmaValida()`.
+- Probado en ambos sentidos desde el celular real: mensaje a 8106-2974 →
+  aparece completo en Bandeja de producción; mensaje a 8109-8161 → aparece
+  en Bandeja de staging. Confirmado sin cruce entre entornos.
+- Nota interna: el objeto `VENTAS` en `config/whatsappCuentas.js` mantiene
+  ese nombre por herencia del código, aunque ahora corresponde a
+  8106-2974, no a 8109-8161 — es solo una etiqueta de log, no afecta nada
+  funcional. No es necesario renombrarlo, pero puede confundir si se lee
+  el código sin este contexto.
+
+**Para Operaciones y Cobranza** (a futuro, cuando se construyan esos
+módulos): cada uno necesita su propio número — mismo mecanismo que ya está
+probado (otra entrada en `whatsappCuentas.js`, con su propio `ambito`), no
+reenvío ni nada especial.
+
+**Herramienta de reenvío entre entornos** (06-09-2026, **ya en `main`**,
+commit `429dfb9`): `WHATSAPP_REENVIO_PHONE_NUMBER_ID` + `WHATSAPP_REENVIO_URL`
+reenvían tal cual (mismo cuerpo, misma firma) los mensajes de un número al
+webhook de otro entorno, sin procesarlos ni guardar nada localmente.
+Pensada para probar el número oficial en producción sin ensuciar la base
+de datos real: se ve el flujo completo (aviso de privacidad, bot, etc.) en
+la base de destino. Probada con dos instancias locales — funciona, y el
+número normal de Ventas sigue procesando local sin regresión. Ambas
+variables quedan vacías por defecto (desactivada) — activarla es cargar
+las dos en Railway cuando se quiera usar.
+
+**Ley 21.719 — protección de datos personales**: implementada y **ya en
+`main` (producción)** desde 06-09-2026 (commit `993321a`), validada con
+Gerencia (rol DPO). Aviso automático de privacidad en primer contacto/
+reapertura de WhatsApp, detección de solicitud de eliminación de datos con
+revisión humana en `/config/privacidad`, y purga automática diaria de
+contactos inactivos sin conversión (12 meses, configurable). Ver detalle
+en el commit de staging `af39e0d`.
+
+**Cobranza**: módulo con desarrollo pendiente, acumulado en `staging` sin
+promover a `main` (sigue la regla de arriba — no se promueve por mejoras).
+
+**Operaciones — "Arranque de Trabajos" (Ventas → Operaciones) — Fase 1
+implementada (09-09-2026, subida a `staging`).** Reemplaza el enfoque de
+la especificación funcional original (`Especificacion_Tecnica_CRM_Arranque_Trabajos.md`,
+tipos Reparación/Rutinario/Lavado/Especial-Proyecto) por uno más simple,
+definido directamente por Luis Devoto: un solo flujo, sin ramificar por
+tipo, con 5 tipos de trabajo reales (mantenimiento preventivo, lavado,
+impermeabilizado, mantenimiento correctivo, otro). Ver
+`docs/HT-AP-03-nota-cambio-v1.34.md` para el detalle completo.
+
+Construido:
+- **Tipo de trabajo obligatorio** al mover un negocio a "Aceptado" (pipeline
+  Operaciones) — gate en `cambiarEtapaNegocio()` (`backend/routes/negocios.js`),
+  cubre kanban, creación directa y el importador CSV masivo.
+- **Orden de Trabajo (OT) automática** al entrar a "Aceptado"
+  (`backend/services/ot.js`), identificada como `OT-{negocio_id}` (no tiene
+  numeración propia). Prellenado de materiales/herramientas:
+  - Mantenimiento preventivo / lavado: desde una plantilla configurable una
+    sola vez (`Config → Plantillas de Orden de Trabajo`, tabla
+    `ot_plantilla_items`) — estos trabajos no varían de un negocio a otro.
+  - Impermeabilizado / correctivo / otro: caso a caso, copiando los ítems de
+    la cotización vigente, **sin precios** (se cargan a mano si hace falta
+    costear).
+- OT editable (materiales/herramientas, con o sin precio) e
+  imprimible/exportable a PDF, igual que una cotización.
+- **Bug corregido de paso**: el importador CSV masivo caía por defecto en
+  "Ganado" en vez de "Aceptado" cuando una fila no traía columna "estado"
+  — contradecía su propio comentario y el texto de la UI. No estaba
+  relacionado con este feature, pero bloqueaba probarlo con el importador.
+- El aviso a cliente al pasar a "Programado" **no necesitó código nuevo**:
+  se configura como una secuencia de seguimiento más (`Config →
+  Secuencias`, un paso de correo con 0 días de espera) asignada a esa etapa
+  desde `Config → Pipeline` — el motor de secuencias ya soportaba esto.
+
+Sigue pendiente (Fase 2, no iniciada):
+- El motor de checklist obligatorio configurable por etapa (el "mayor hueco
+  de diseño" que ya identificaba este documento) — sigue sin existir; el
+  único gate de etapa además del de tipo de trabajo es el de causa de no
+  cierre.
+- N° de Contrato para servicios recurrentes (Rutinario/Lavado) — sigue sin
+  existir esa tabla; hoy solo hay `negocios.n_oc` (N° de orden de compra).
+- WhatsApp de Operaciones (número separado del de Ventas) — sigue sin dar
+  de alta en Meta, depende del trabajo de multi-número de arriba.
+- Integración con Compras y Despacho — explícitamente fuera de alcance por
+  ahora (decisión de Luis Devoto, 09-09-2026): la OT solo registra
+  materiales/herramientas, sin disparar nada en esos módulos.
+- Firma digital de cliente en sitio — no evaluada en esta fase.
