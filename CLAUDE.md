@@ -3,8 +3,9 @@
 Este archivo contiene solo las reglas vigentes. El historial de despliegues,
 incidentes y decisiones está en `docs/HT-AP-03-historial-despliegues.md`; lo
 que sigue abierto, en `docs/HT-AP-03-pendientes.md`. Las notas de cambio están
-en `docs/HT-AP-03-nota-cambio-v*.md` y el procedimiento completo de
-promoción en `docs/HT-AP-03-documento-consolidado.md` (§17).
+en `docs/HT-AP-03-nota-cambio-v*.md`; las hojas de actualización para
+SharePoint (HT-AP-03 y HT-IN-05), en `docs/sharepoint/`; y el procedimiento
+completo de promoción en `docs/HT-AP-03-documento-consolidado.md` (§17).
 
 ## Despliegue a producción (vigente desde 12-10-2026)
 

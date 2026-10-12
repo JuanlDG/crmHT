@@ -1,9 +1,9 @@
 # HT-AP-03 — Nota de cambio v1.47 (10/10/2026)
 
-> **Estado: solo en `staging`.** No promovido a `main`. Requiere el OK de
-> Luis Devoto (más confirmación adicional si el push cae en horario laboral).
-> **Documentar como instructivo en SharePoint antes de pasar a producción**,
-> según la norma de la empresa.
+> **Estado: en producción desde el 12-10-2026** (rama `main`, commit `5c1d091`), con la orden
+> explícita de Luis Devoto.
+> Documentación: hoja de actualización de HT-AP-03 (`docs/sharepoint/HTAP03_v1.47_hoja_de_actualizacion.docx`)
+> y del manual HT-IN-05 v14 (`docs/sharepoint/HTIN05_v14_hoja_de_actualizacion.docx`), pendientes de publicar en SharePoint.
 
 ## Bandeja de WhatsApp: "Marcar como atendida" sin cerrar la conversación
 

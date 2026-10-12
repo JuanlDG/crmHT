@@ -1,7 +1,7 @@
 # HT-AP-03 — CRM Comercial HidroTecnica — Documento Consolidado
 
 **Documento:** CRM Comercial HidroTecnica (HT-AP-03)
-**Fecha de consolidación:** 2026-08-07 (última actualización: 2026-09-14)
+**Fecha de consolidación:** 2026-08-07 (última actualización: 2026-10-12)
 **Responsable:** Gerencia General — Luis Devoto (ldevoto@hidrotecnica.cl)
 **Naturaleza de este documento:** reemplaza la lectura dispersa de las notas de
 cambio v1.2 a v1.25 (que quedan archivadas en `docs/` como historial de
@@ -66,11 +66,7 @@ un vendedor queda siempre acotado a lo propio, sin importar el toggle
 general de acceso (§11); y en Dashboard/Reportería, la tarjeta y columnas
 de **Conversaciones de WhatsApp del mes** más el nuevo **Embudo comercial**
 (Conversaciones → Cotizaciones → Notas de venta → Facturas, en cantidad y
-en monto, por vendedor/área) (§9); de v1.33 (08-09-2026): **Sugerencias de
-facturación** — cruce automático de facturas de Softland contra negocios
-del pipeline por RUT de empresa + monto exacto, que solo sugiere (nunca
-mueve un negocio solo) desde el Pipeline y desde una pestaña propia de
-Reportería (§9); de v1.34 (11 al 12-09-2026): **Arranque de Trabajos** —
+en monto, por vendedor/área) (§9); de v1.33 (08-09-2026): **Sugerencias de facturación** (cruce de facturas de Softland por RUT de empresa + monto exacto), retirada en la v1.45 (08-10-2026) porque no identificaba el negocio (§9); de v1.34 (11 al 12-09-2026): **Arranque de Trabajos** —
 tipo de trabajo obligatorio y Orden de Trabajo automática al aceptar un
 negocio de Operaciones (§3); y de v1.35 (26-08 al 14-09-2026, relevamiento
 completo pedido por Luis Devoto para poner al día toda la documentación):
@@ -94,6 +90,17 @@ anterior del documento base.
 Tareas — §1, §3, §9, §13) y se documentó el procedimiento de promoción parcial
 con el incidente del primer despliegue (§17). Cobranza (§19) sigue en
 `staging`.
+
+**Actualización v1.42 a v1.47 (08 y 12-10-2026):** pasaron a producción la
+respuesta del cliente por WhatsApp a un negocio en seguimiento (v1.42, §11), los
+técnicos por nombre en el importador de oportunidades (v1.43, §3), las alertas
+de OT en vez de bloqueo (v1.44, §3, §9 y §13), el retiro de "Factura sugerida"
+(v1.45, §9 y §13), el envío de WhatsApp sin plantilla dentro de la ventana de
+24 h (v1.46, §4, §8, §11 y §13) y "Marcar como atendida" en la Bandeja (v1.47,
+§11, §13 y §18). La regla de despliegue vigente desde el 12-10-2026 está en §17.
+La integración con Mantenimiento (v1.41) y Cobranza (§19) siguen en `staging`.
+Los textos para el documento Word y para el manual HT-IN-05 están en
+`docs/sharepoint/` (una hoja de actualización por versión).
 
 ---
 
@@ -363,6 +370,16 @@ reemplaza la herramienta HTML independiente que existía antes):
   ya en el sistema (se resuelve por email o nombre). Campo nuevo
   `negocios.n_oc` para el N° de orden de compra. (Fix v1.34: antes una fila
   sin "estado" caía por error en "Ganado" en vez de "Aceptado".)
+- **Columna "tecnicos" del importador (v1.43, 07-10-2026):** antes exigía el
+  correo o el nombre completo exacto, con tildes. Ahora se compara contra
+  usuarios activos con perfil técnico, sin distinguir mayúsculas, tildes ni
+  espacios repetidos (`backend/utils/tecnicos.js`): correo o nombre completo,
+  coincidencia exacta; si no hay, nombre parcial de 2 o más palabras en
+  cualquier orden ("Raul Ibarra", "Matias Rojas"): un solo usuario coincide,
+  se asigna; más de uno, la fila se rechaza como "técnico ambiguo" (usar
+  nombre completo o correo). Una sola palabra nunca se acepta por parcial. Si
+  el CSV usa ";" como separador, la lista de varios técnicos va entre
+  comillas. Sin migración. Ver `docs/HT-AP-03-nota-cambio-v1.43.md`.
 - **Arranque de Trabajos — tipo de trabajo y Orden de Trabajo automática
   (v1.34):** al mover un negocio a **"Aceptado"** en el pipeline Operaciones
   (por cualquier vía: kanban, creación directa o el importador CSV de
@@ -390,24 +407,48 @@ reemplaza la herramienta HTML independiente que existía antes):
     dentro de la tabla de ítems con scroll horizontal.
 - **Programación y ejecución de la OT (v1.40, en producción desde el
   01-10-2026):** al pasar un negocio del pipeline Operaciones a **"Programado"**
-  se exigen **fecha programada para ejecutar**, **horas de trabajo
+  se piden **fecha programada para ejecutar** (desde la v1.44 ya no bloquean: ver "OT: de bloquear a alertar" más abajo), **horas de trabajo
   programadas** (por técnico) y **al menos un técnico** (usuarios activos con
   rol `tecnico`, editables después); al pasar a **"Ejecutado"**, además la
   **fecha de ejecución** (la real) y las **horas ejecutadas** (por técnico, en
   blanco por defecto, no se prellenan). **ID Fracttal** es opcional. Las
   horas-hombre son horas × cantidad de técnicos (3 técnicos × 6 h = 18). Las
   reglas rigen en todas las vías que mueven la etapa: Pipeline, ficha del
-  negocio, secuencias automáticas, sugerencias de facturación y los dos
-  importadores CSV (el de actualización masiva no puede saltarse la regla y
-  rechaza la fila si a la OT le faltan datos). Solo aplican a OT nuevas
+  negocio, secuencias automáticas y los dos
+  importadores CSV (desde la v1.44 ninguno de los dos bloquea por datos faltantes: cargan la fila igual y dejan una advertencia). Solo se alertan las OT nuevas
   (`ordenes_trabajo.exige_programacion`; las que existían al migrar quedan
   exentas). Un negocio que llega a Programado/Ejecutado sin OT exige también el
   tipo de trabajo. El Pipeline muestra el botón **"Ver OT"** en las tarjetas con
-  OT, y el cuadro de "Programado"/"Ejecutado" pide los datos al mover. El
+  OT, y el cuadro de "Programado"/"Ejecutado" pide los datos al mover; si faltan, muestra "Quedará pendiente: …" y el botón pasa a "Mover sin completar". El
   código reconoce las etapas **Aceptado, Programado y Ejecutado** del pipeline
   "Operaciones" por su nombre: Config → Pipeline avisa si alguna falta o está
   inactiva y pide confirmación antes de renombrarla, desactivarla o eliminarla.
   Detalle: `docs/HT-AP-03-nota-cambio-v1.40.md`.
+- **OT: de "bloquear" a "alertar" (v1.44, 08-10-2026):** mover un negocio de
+  Operaciones a "Programado" o "Ejecutado" ya no exige fecha programada, horas
+  ni técnicos (ni, en "Ejecutado", fecha de ejecución y horas ejecutadas): el
+  modal sigue pidiéndolos y, si faltan, muestra "Quedará pendiente: …" y el
+  botón pasa a "Mover sin completar". Rige en kanban, ficha del negocio,
+  edición de la OT, actualización masiva e importador (que carga la fila y
+  deja una advertencia). Siguen bloqueando el tipo de trabajo al pasar a
+  "Aceptado" (o a Programado/Ejecutado si el negocio no tiene OT), la causa de
+  no cierre al marcar "Perdido" y los datos mal escritos (horas menores o
+  iguales a 0, fecha inválida, técnico sin perfil técnico). La alerta en rojo
+  se calcula al consultar (`services/ot.js#alertasOT`, no se guarda en la OT):
+  "Sin fecha programada", "Sin horas programadas", "Sin técnicos", "Sin fecha
+  de ejecución", "Sin horas ejecutadas"; se ve en la tarjeta del Pipeline y en
+  la ficha de la OT, y desaparece sola al completar el dato. **Correo diario a
+  las 8:00** (hora de Chile, día hábil según Config → horario y feriados) solo
+  si hay pendientes: cada vendedor recibe las OT de sus negocios y el jefe
+  comercial todas (con columna Vendedor), porque carga las horas; un vendedor
+  que también es jefe recibe solo la lista completa. Corre solo en producción;
+  en staging se prueba con `POST /api/reportes/ot-pendientes/enviar-ahora`
+  (administrador o jefe comercial); control de envío en la tabla
+  `ot_alertas_envios`. Las OT anteriores a la v1.40 no generan alerta. Quién
+  edita la OT no cambia (vendedor dueño, jefe comercial y administrador; el
+  técnico en solo lectura). Decisión de Luis Devoto (08-10-2026): solo el tipo
+  de trabajo sigue bloqueando; no hay escalamiento por días. No se probó el
+  envío real por Brevo. Ver `docs/HT-AP-03-nota-cambio-v1.44.md`.
 - **Fecha de compromiso (v1.22):** campo opcional `negocios.fecha_compromiso`
   (ej. fecha de entrega pactada con el cliente) — distinto de "fecha
   estimada de cierre" (forecast de venta). Se edita en la ficha del negocio
@@ -517,8 +558,7 @@ cotización, algunas aún en SharePoint).
   contacto tiene email/teléfono registrado (cada una se deshabilita si
   falta el dato correspondiente); se puede enviar por uno, otro o ambos a
   la vez. El envío por WhatsApp usa la plantilla aprobada
-  `envio_cotizacion_v2` con el link público (funciona aunque la
-  conversación esté cerrada, a diferencia de un mensaje libre) — no
+  `envio_cotizacion_v2` con el link público (funciona aunque la conversación esté cerrada, a diferencia de un mensaje libre; desde la v1.46, si el cliente escribió hace menos de 23 h y la conversación no está cerrada, el mismo contenido sale como texto libre sin costo, y fuera de esa ventana sale la plantilla, ver §11) — no
   adjunta el PDF en el mensaje mismo, el cliente accede por el link.
 - Si el contacto no tiene email **ni** teléfono registrado, no queda
   ningún canal para enviar desde el sistema — se muestra una advertencia
@@ -844,8 +884,7 @@ mismo criterio que Secuencias (§8).
   vez de desaparecer en silencio, para notarlo antes de enviarlo.
   **Canal "whatsapp" (v1.35, corrige lo que decían versiones anteriores
   de este documento):** también se envía solo, vía la Cloud API de Meta,
-  con una plantilla aprobada elegida al configurar el paso (ver el
-  listado real vigente en §11) — cae a tarea manual si el contacto no
+  con una plantilla aprobada elegida al configurar el paso (ver el listado real vigente en §11; desde la v1.46, dentro de la ventana de 24 h el paso sale como texto libre o mensaje con botones, y la plantilla solo se usa fuera de ella) — cae a tarea manual si el contacto no
   tiene teléfono o el envío falla, igual que correo. **Canal "cambiar
   etapa" (v1.30):** no envía nada — mueve el negocio a la etapa elegida
   (si es de tipo "perdida", exige causa de no cierre), reutilizando el
@@ -961,25 +1000,28 @@ entre cada etapa, filtrable por año/mes/vendedor/área como el resto de la
 pantalla. Sin endpoint ni tabla nueva: se suma a la consulta ya existente
 de `GET /api/softland/reporte`. Ver detalle en la nota de cambio v1.32.
 
-**Sugerencias de facturación (v1.33):** al sincronizar con Softland, cruza
-facturas sin resolver contra negocios del pipeline por **RUT de empresa +
-monto exacto** (no por nombre de cliente, texto libre sin garantía de
-coincidir con la razón social del CRM) — acotado a pipelines que tengan
-una etapa "Facturado" configurada. **Nunca mueve un negocio solo:** con
-datos reales se comprobó que cliente+monto no es una clave única (un
-mismo cliente de mantención recurrente puede repetir el mismo monto en
-decenas de negocios distintos — sitios/tareas diferentes) — el sistema
-lista los candidatos y una persona confirma cuál corresponde, o descarta
-si ninguno aplica. Aparece en dos lugares: como aviso directo en la
-tarjeta del negocio candidato en el Pipeline, y en una pestaña propia
-("Sugerencias de facturación") dentro de Reportería Softland con la vista
-completa. Confirmar reusa exactamente la misma lógica que mover la
-tarjeta a mano (historial de etapas, secuencias, encuesta de
-satisfacción). Pendiente de explorar más adelante: capturar en Softland
-un identificador de sitio/tarea (campo `NumOC`, ya sincronizado para NV
-pendientes pero no para facturas) para que el cruce deje de depender de
-elegir entre varios candidatos idénticos. Ver detalle completo en la nota
-de cambio v1.33.
+**Sugerencias de facturación (v1.33) — retirada en la v1.45 (08-10-2026).** La
+función cruzaba facturas de Softland con negocios por RUT de empresa y monto
+exacto y mostraba una insignia verde "Factura sugerida" en la tarjeta del
+Pipeline, con botones Confirmar y Descartar. No funcionó: en clientes
+recurrentes (por ejemplo Cencosud) el mismo monto se repite en decenas de
+negocios, así que la misma factura aparecía sugerida en muchas tarjetas,
+incluso de negocios en "Aceptado" que ni siquiera se habían ejecutado. Se
+quitaron la insignia y los botones, la pestaña "Sugerencias de facturación" de
+Reportería Softland, los tres endpoints
+`/api/softland/sugerencias-facturacion` (listar, confirmar, descartar) y el
+servicio `services/sugerenciasFacturacion.js`. Se conservan las columnas
+`negocio_id`, `revisado_por_id` y `revisado_en` de `reporte_softland_facturas`
+(vínculos ya confirmados e historial de lo descartado; ya nada las escribe ni
+las lee), sin migración ni pérdida de datos. Siguen vigentes las pestañas
+Mensual, Comparación anual, Por vendedor, Por área, Embudo, NV sin facturar y
+los listados de Cotizaciones, Notas de Venta y Facturas. **Siguiente paso
+planificado (08-10-2026):** mover a "Facturado" desde Softland con una llave
+confiable, negocio → nota de venta (número y N° de OC) → factura, en vez de
+RUT y monto; falta verificar si la factura en Softland trae la referencia a la
+nota de venta (el CRM hoy no sincroniza esa columna) y cuántos negocios tienen
+nota de venta u OC cargados. Ver `docs/HT-AP-03-nota-cambio-v1.45.md` (el
+detalle original está en la v1.33).
 
 - **Pestaña "OT's" en Reportes (v1.40):** junto a Comercial, Pipeline y
   WhatsApp. Filtros por fechas, técnico, tipo de trabajo y vendedor. Tarjetas
@@ -996,7 +1038,8 @@ de cambio v1.33.
   cada uno suma las horas completas de la OT y el valor de venta se reparte en
   partes iguales. Disponible también para Cowork como reportes `ots_kpis`,
   `ots_resumen_mensual`, `ots_por_tipo`, `ots_por_tecnico`, `ots_pendientes` y
-  `ots_detalle` (§18).
+  `ots_detalle` (§18). Desde la v1.44 el reporte avisa en rojo cuántas OT tienen datos sin completar y cuántas ejecutadas del período suman 0 horas-hombre por falta de horas o técnicos (antes una OT sin fecha de ejecución no aparecía en "ejecutadas" y una sin horas sumaba 0 sin avisar).
+
 
 ## 10. Encuesta post-cierre
 
@@ -1049,6 +1092,62 @@ y `permiso_llamada` están aprobadas pero no están disponibles como opción
 en ningún paso de secuencia ni botón del CRM todavía. Ver nota de cambio
 v1.35 (bug original) y este mismo documento para la corrección.
 
+**Respuesta del cliente a un negocio en seguimiento (v1.42, 07-10-2026):**
+hasta la v1.40, solo el toque de un botón de la plantilla "Seguimiento de
+cotización" actuaba sobre el negocio; una respuesta escrita a mano o el botón
+de otra plantilla quedaba solo en la Bandeja y la secuencia seguía enviando
+recordatorios. Desde la v1.42 todo mensaje entrante en la cuenta de Ventas de
+un contacto con negocios abiertos en Cotizado, o con una secuencia de
+seguimiento activa, se procesa en `services/respuestaCliente.js` (se excluyen
+reacciones con emoji y solicitudes de eliminación de datos de la Ley 21.719,
+que revisa una persona): (1) se pausa la secuencia con el motivo "Cliente
+respondió"; (2) rechazo claro y un solo negocio en seguimiento: pasa a Perdido
+y se envía la encuesta de causa de no cierre, como con el botón "No realizaré
+la compra"; con varios negocios no se mueve ninguno y se crea la tarea
+"Rechazo del cliente por WhatsApp: elegir negocio"; (3) otra respuesta y un
+solo negocio en Cotizado: pasa a Negociación, con el mismo efecto que moverlo
+a mano; con varios, tarea "Cliente respondió por WhatsApp: elegir negocio";
+(4) si el pipeline no tiene etapa Negociación activa o etapa de pérdida, no se
+mueve y se crea la tarea. Cada acción queda en la línea de tiempo. La tarea va
+al vendedor del negocio o, si no tiene, al del contacto, y no se repite una
+tarea pendiente igual. Si Negociación tiene una secuencia propia, se activa y
+queda pausada; se reactiva desde la ficha del negocio. Los botones "No
+realizaré la compra" y "Necesito más información" mantienen su comportamiento
+y prioridad. Un error en esta lógica no impide registrar el mensaje en la
+Bandeja. **Detección de rechazo:** compara el texto, sin tildes ni mayúsculas,
+con una lista fija de frases (`PATRONES_RECHAZO`), solo en mensajes de hasta
+300 caracteres; no detecta un "no" suelto ni interpreta el sentido. Decisión
+de Luis Devoto (07-10-2026): un rechazo claro cierra el negocio sin
+confirmación humana; un falso positivo se corrige moviendo el negocio a mano.
+Sin cambios de schema. Ver `docs/HT-AP-03-nota-cambio-v1.42.md`.
+
+**Mensajes dentro de la ventana de 24 h: sin plantilla (v1.46, 09-10-2026):**
+las 3 plantillas del CRM (`envio_cotizacion_v2`, `seguimiento_coti`,
+`vencimiento_cotizacion`) están en categoría Marketing en Meta, a 78,49 CLP
+por mensaje entregado (estadísticas de Meta, 2 al 9-10-2026), y se enviaban
+siempre como plantilla aunque el cliente hubiera escrito hace pocas horas;
+dentro de la ventana de 24 h el mismo contenido como texto libre o interactivo
+no tiene costo (25-09 al 9-10: 144 de 166 envíos de "Envío de cotización" y
+104 de 271 de "Seguimiento" caían dentro de la ventana). Regla
+(`services/whatsappVentana.js`): si el último mensaje entrante del cliente
+tiene menos de 23 h (variable opcional `WHATSAPP_VENTANA_MARGEN_HORAS`, entre
+1 y 24), el mensaje sale como texto libre o interactivo; si no, como
+plantilla; si Meta rechaza el envío libre se reenvía como plantilla, y un
+error de red ambiguo no se reintenta. Aplica al envío de cotización por
+WhatsApp y a los pasos de secuencia (envío, seguimiento y vencimiento); no
+cambia reabrir conversación (siempre plantilla) ni los mensajes de los
+vendedores; una conversación cerrada no admite texto libre. Seguimiento y
+vencimiento llevan 2 botones: dentro de la ventana salen como mensaje
+interactivo ("Necesito más info" y "No compraré", título de hasta 20
+caracteres) y al responder el CRM registra y procesa el texto de la plantilla,
+por lo que el flujo es idéntico en ambos caminos. Se registra el ahorro en
+`whatsapp_mensajes.canal_envio`. Los textos libres replican el cuerpo de las
+plantillas: si se edita una plantilla en Meta hay que actualizar
+`services/secuencias.js` (campo `libre`) y `routes/cotizaciones.js`.
+**Pendiente (Meta, fuera del código):** evaluar pasar "Seguimiento" y
+"Vencimiento" a Utilidad y confirmar tarifas vigentes; falta probar con
+WhatsApp real. Ver `docs/HT-AP-03-nota-cambio-v1.46.md`.
+
 **Historia — cuenta bloqueada y su resolución (v1.31, 23-08-2026 al
 06-09-2026):** la cuenta de WhatsApp Business quedó desactivada
 permanentemente por Meta por la Política de Comercio, sin actividad real
@@ -1088,6 +1187,19 @@ WhatsApp (Meta), en producción desde la migración de arriba.
 - Cierre automático a las 24 h sin actividad (ventana de mensajería de
   Meta) o manual por un vendedor/admin; se reabre sola si el cliente vuelve
   a escribir.
+- **Marcar como atendida (v1.47, 10-10-2026):** marca aparte de "cerrar"
+  (`whatsapp_conversaciones.atendida_manual`, con fecha y usuario) que saca la
+  conversación de Reportería → WhatsApp → "Conversaciones abiertas ahora" y de
+  las alertas de respuesta (vendedor → callcenter → jefe comercial → gerencia)
+  sin tocar la ventana de 24 h: se puede seguir escribiendo con texto libre.
+  Se desmarca sola cuando el cliente vuelve a escribir. La Bandeja tiene dos
+  botones, "Marcar como atendida" y "Cerrar conversación" (solo si está
+  abierta); la ficha muestra "✓ Atendida". Cerrar no cambia: implica atendida
+  y bloquea el texto libre, y desde la v1.46 hace que los envíos automáticos
+  salgan como plantilla. Endpoint `POST
+  /api/whatsapp/conversaciones/:contactoId/atender` (mismos permisos que
+  cerrar); `GET /conversaciones` suma `atendida`. El cálculo nocturno de
+  tiempos de respuesta no cambia. Ver `docs/HT-AP-03-nota-cambio-v1.47.md`.
 - Acceso configurable: "cualquier vendedor ve y responde todo" (por
   defecto) o "solo el vendedor asignado al lead/negocio".
 - Errores comunes de la Cloud API (token vencido, número no autorizado en
@@ -1209,6 +1321,16 @@ solo en acentos puntuales, celeste como color de interacción principal.
   `fecha_ejecucion`, `id_fracttal` y `exige_programacion` (false para las OT
   anteriores a la migración `ot_programacion_v1.40`); tabla `ot_tecnicos`
   (`ot_id`, `user_id`) con los técnicos de cada OT.
+- **Alertas de OT (v1.44, ver §3):** tabla `ot_alertas_envios`, control del
+  correo diario de OT pendientes. No se guarda ninguna marca de alerta en
+  `ordenes_trabajo`: se calcula al consultar.
+- **Canal de envío de WhatsApp (v1.46, ver §11):**
+  `whatsapp_mensajes.canal_envio` (`'libre'`, `'plantilla'` o NULL), con
+  restricción CHECK; migración con `IF NOT EXISTS`.
+- **Conversación atendida (v1.47, ver §11):**
+  `whatsapp_conversaciones.atendida_manual`, con fecha y usuario que la marcó
+  (campos `atendida_*`); migración con `IF NOT EXISTS`. Se limpia sola cuando
+  el cliente escribe.
 - **Formas de pago (v1.22, ver §4):** tabla `formas_pago` (`nombre`,
   `incluir_datos_bancarios`, `activo`); `cotizaciones.forma_pago_id` (FK).
 - **Cotizaciones:** `iva_pct`; tabla `config_empresa` (emisor/banco);
@@ -1292,9 +1414,7 @@ solo en acentos puntuales, celeste como color de interacción principal.
   índice por año/mes para el filtrado del listado); tabla
   `reporte_softland_backfill` (marca qué dataset ya tuvo su carga
   histórica única — ver §14). `reporte_softland_facturas` agrega
-  `negocio_id`, `revisado_por_id`, `revisado_en` (v1.33 — Sugerencias de
-  facturación, ver §9; `negocio_id` solo se llena al confirmar una
-  sugerencia, nunca automático).
+  `negocio_id`, `revisado_por_id`, `revisado_en` (v1.33; la función se retiró en la v1.45, ver §9: las columnas se conservan con los vínculos ya confirmados y el historial de descartes, y ya nada las escribe ni las lee).
 - **Ley 21.719 (v1.35, ver §11):** tablas `config_privacidad`,
   `solicitudes_eliminacion_datos`, `privacidad_purga_ejecuciones`.
 - **Cobranza (v1.35, en construcción — detalle completo en §19):**
@@ -1470,15 +1590,50 @@ Sin prioridad asignada (no comerciales / no bloquean nada):
   con upsert probado contra una base de prueba, pero **sin validar contra
   la réplica real de Softland en producción** — este entorno de
   desarrollo no tiene salida de red hacia ella.
+- **Promoción del 12-10-2026 (v1.45, v1.46, v1.47):** confirmar el estado
+  Success del despliegue en Railway (Luis Devoto); probar v1.46 (envío dentro
+  y fuera de ventana, botones) y v1.47 con WhatsApp real; publicar los
+  instructivos HT-IN-05 v13 y v14; evaluar en Meta el cambio de categoría de
+  "Seguimiento" y "Vencimiento" a Utilidad.
+- **Respuesta del cliente por WhatsApp (v1.42):** probar con un webhook real
+  de Meta y con el botón real de "Vencimiento de cotización" (no guarda
+  correlación con el negocio); revisar tras las primeras semanas si hay
+  negocios cerrados por falsos positivos de la lista de frases de rechazo.
+- **Facturado desde Softland (v1.45):** definir la llave negocio → nota de
+  venta (número y N° de OC) → factura; verificar si la factura en Softland
+  trae la referencia a la nota de venta.
+- **OT (v1.44):** probar el envío real del correo diario (Brevo) con datos de
+  producción; leer Excel/informes de Fracttal para mover a Ejecutado.
+
 
 ## 17. Proceso de despliegue a producción
 
-> **Actualización 01-10-2026:** la regla vigente desde el **29-09-2026** (OK de
-> Luis Devoto para cada promoción; confirmación adicional si cae en horario
-> laboral) y el procedimiento de promoción parcial están al final de esta
-> sección. Lo que sigue es el historial de las reglas anteriores.
+> **Actualización 12-10-2026:** la regla vigente es la del recuadro siguiente. Lo
+> que sigue más abajo (reglas del 07-08, 10-08 y 29-09) es historial; el texto
+> completo está en `docs/HT-AP-03-historial-despliegues.md`.
 
-**Regla vigente desde el 07-08-2026:** los cambios se promueven a `main`
+**Regla vigente desde el 12-10-2026 (decisión de Luis Devoto):** a `main`
+(producción) se pasa solo con su orden explícita; la decisión es suya y no de
+Claude. Su orden basta: no hay confirmación adicional ni restricción de horario
+laboral o de feriados. No hay excepción por error crítico (se le avisa y se espera
+su orden). `staging` es libre. La orden debe nombrar qué se promueve (commits o
+rama) y el destino: el clasificador del modo auto de Claude Code bloqueó un push
+a `main` el 10-10-2026 aun con el OK en el chat, y la documentación indica que una
+autorización cuenta solo si es específica. Reglas completas y checklist de
+promoción en `CLAUDE.md`.
+
+**Promociones recientes:** 08-10-2026 (`11dcc9a`: v1.42, v1.43 y v1.44, en
+horario laboral, con el OK de Luis) y 12-10-2026 (feriado: v1.45, v1.46 y v1.47
+en `aab0e7c` a `16775b5`, más dos commits de solo documentación, `19b1525` y
+`ab00b95`; producción mostró la versión `19b1525`, que incluye los tres cambios;
+falta la confirmación formal de Success en Railway). Ninguna incluyó Cobranza ni la integración con Mantenimiento (v1.41).
+
+> **Historial (hasta el 01-10-2026):** la regla del 29-09-2026 (OK de Luis para cada
+> promoción; confirmación adicional en horario laboral) y el procedimiento de
+> promoción parcial están al final de esta sección. Lo que sigue es el historial
+> de las reglas anteriores.
+
+**Regla del 07-08-2026 (reemplazada):** los cambios se promueven a `main`
 (producción) **solo fuera del horario de trabajo de la empresa**, salvo
 que se trate de un **error crítico** que no pueda esperar. `staging` no
 tiene esta restricción — sigue disponible para pruebas en cualquier
@@ -1498,7 +1653,7 @@ El reporte de sesión cortada / cotización en borrador no guardada queda
 como un problema técnico aparte, sin diagnosticar — no se investigó su
 causa real en esta nota.
 
-**Modo más restrictivo, vigente desde el 10-08-2026:** instrucción
+**Modo más restrictivo del 10-08-2026 (reemplazado):** instrucción
 explícita de Luis Devoto, más estricta que la regla de horario de arriba —
 solo se promueve a `main` si hay un **error** que corregir, nunca por una
 mejora o feature nueva (aunque sea fuera de horario). Las mejoras quedan
@@ -1573,7 +1728,7 @@ SharePoint, ver §16 punto 9).
 | GET | `/api/v1/negocios/{id}` | Detalle: etapa, historial de etapas, cotizaciones |
 | POST | `/api/v1/negocios/{id}/cotizaciones` | Registrar cotización (numeración real del CRM, avanza etapa a "Cotizado") |
 | GET | `/api/v1/reportes/{tipo}` | Reportes comerciales existentes (§9), mismos filtros; desde v1.40 también `ots_kpis`, `ots_resumen_mensual`, `ots_por_tipo`, `ots_por_tecnico`, `ots_pendientes` y `ots_detalle` (pestaña OT's, §9) |
-| GET | `/api/v1/whatsapp/conversaciones?abierta=true\|false` | Lista conversaciones de la Bandeja (v1.35, todas, sin distinción de vendedor) |
+| GET | `/api/v1/whatsapp/conversaciones?abierta=true\|false` | Lista conversaciones de la Bandeja (v1.35, todas, sin distinción de vendedor) No incluye el campo `atendida` (v1.47). |
 | GET | `/api/v1/whatsapp/conversaciones/{contactoId}/mensajes` | Hilo completo de mensajes, orden ascendente (v1.35) |
 | POST | `/api/v1/whatsapp/conversaciones/{contactoId}/mensajes` `{texto}` | Envío real vía Meta (v1.35) — respeta la ventana de 24h de Meta (`409` si está cerrada); a diferencia de un vendedor logueado, no antepone firma con nombre de persona |
 
