@@ -86,53 +86,66 @@ tanda, no un levantamiento general de la regla. Los próximos cambios
 vuelven a necesitar la misma confirmación de error-no-mejora salvo que se
 avise lo contrario otra vez.
 
-## Pendientes (actualizado 10-10-2026, promoción preparada)
+## Pendientes (actualizado 12-10-2026, promoción a `main`)
 
-**Promoción a `main` armada, SIN pushear (falta el OK de Luis Devoto).** Rama
-`claude/peaceful-hawking-f0xdcq`, 3 commits sobre `main` (`11dcc9a`), tomados de
-`staging` por cherry-pick: v1.45 (retirar "Factura sugerida"), v1.46 (WhatsApp
-sin plantilla en ventana de 24 h) y v1.47 (marcar como atendida sin cerrar).
-No incluye Cobranza ni la integración con Mantenimiento (v1.41), ni
-`middleware/auth.js`, `routes/auth.js`, `services/email.js` ni `Usuarios.jsx`.
+**Promoción a `main` del 12-10-2026 (feriado en Chile, fuera de horario laboral,
+con el OK explícito de Luis Devoto): v1.45, v1.46 y v1.47. Falta confirmar que
+Railway quede en Success.** Commits en `main` (`11dcc9a..16775b5`): `aab0e7c`
+(v1.45, retirar "Factura sugerida"), `684ade2` (v1.46, WhatsApp sin plantilla
+en ventana de 24 h), `5c1d091` (v1.47, marcar como atendida sin cerrar) y
+`16775b5` (documentación). Tomados de `staging` por cherry-pick en la rama
+`claude/peaceful-hawking-f0xdcq`. No incluye Cobranza ni la integración con
+Mantenimiento (v1.41), ni `middleware/auth.js`, `routes/auth.js`,
+`services/email.js` ni `Usuarios.jsx`.
 Probada según las lecciones del 23-09 y 01-10: clon limpio con el comando de
 build de `railway.json`, sin enlaces simbólicos, schema de `main` creado primero
 y el código de la rama encima, barrido de endpoints autenticados con 6 roles sin
 500 atribuibles al cambio. Migraciones: `whatsapp_mensajes.canal_envio` y
-`whatsapp_conversaciones.atendida_*` (`IF NOT EXISTS`). Tras el push, dar por
-buena la promoción solo con el estado **Success** en Railway. Falta probar
-v1.46 (fuera de ventana y botones) y v1.47 con WhatsApp real, y el instructivo
-en SharePoint.
+`whatsapp_conversaciones.atendida_*` (`IF NOT EXISTS`). Dar por buena la
+promoción solo con el estado **Success** en Railway. Falta probar v1.46 (fuera
+de ventana y botones) y v1.47 con WhatsApp real, y el instructivo en SharePoint.
+
+**Incidente del 10-10-2026: el push a `main` fue bloqueado por el clasificador
+del modo auto de Claude Code.** El 08-10 el push a `main` salió sin bloqueo; el
+10-10 el clasificador lo rechazó dos veces con `[Production Deploy]`, aun con el
+OK de Luis en el chat. Causa del cambio sin determinar: no hay
+`.claude/settings.json` en el repo, ningún commit toca permisos y el changelog
+de Claude Code 2.1.286 a 2.1.296 no menciona cambios al criterio de `git push`
+(la documentación no dice si un push a `main` que dispara despliegue cuenta como
+"Production deploy"). El 12-10 el mismo push pasó con una orden de Luis que
+nombraba commits y destino. Según la documentación, el OK en el chat cuenta solo
+si es específico (nombra acción, rama/commits y destino). Para promover: pedir
+la orden con los commits y el destino; si se bloquea, no esquivarlo por otra
+vía (merge desde GitHub): avisar a Luis. La regla `permissions.allow` no está
+probada contra este bloqueo.
 
 ## Pendientes (actualizado 10-10-2026)
 
-**Bandeja: "Marcar como atendida" sin cerrar (v1.47, solo en `staging`).**
+**Bandeja: "Marcar como atendida" sin cerrar (v1.47, promovido a `main` el 12-10-2026).**
 Pedido de Luis Devoto: antes había que cerrar la conversación para sacarla de
 pendientes, lo que bloquea el texto libre. Ahora "atendida" es una marca aparte
 (`whatsapp_conversaciones.atendida_manual`): sale de pendientes y de las
 alertas, no toca la ventana de 24 h y se borra sola si el cliente escribe.
 Cerrar implica atendida, sin cambios. Ver `docs/HT-AP-03-nota-cambio-v1.47.md`.
-Falta probar en `staging` con usuarios reales, documentar como instructivo y el
-OK de Luis para `main`.
+Falta probar con usuarios reales y documentar como instructivo.
 
 ## Pendientes (actualizado 09-10-2026)
 
-**WhatsApp sin plantilla dentro de la ventana de 24 h (v1.46, solo en rama de
-desarrollo / `staging`).** Pedido de Luis Devoto: las 3 plantillas están en
+**WhatsApp sin plantilla dentro de la ventana de 24 h (v1.46, promovido a `main`
+el 12-10-2026).** Pedido de Luis Devoto: las 3 plantillas están en
 Marketing (78,49 CLP c/u). Con cliente que escribió hace <23 h, el envío de
 cotización y los pasos de secuencia (envío, seguimiento, vencimiento) salen
 como texto libre o mensaje con botones (gratis); fuera de ventana, plantilla
 como antes. Ver `docs/HT-AP-03-nota-cambio-v1.46.md`. Falta probar con
-WhatsApp real en `staging`, documentar como instructivo, y el OK de Luis para
-`main`. Fuera del código: pasar "Seguimiento" y "Vencimiento" a Utilidad en Meta.
+WhatsApp real y documentar como instructivo. Fuera del código: pasar "Seguimiento" y "Vencimiento" a Utilidad en Meta.
 
 ## Pendientes (actualizado 08-10-2026)
 
-**"Factura sugerida" retirada (v1.45, solo en `staging`).** No funcionó
+**"Factura sugerida" retirada (v1.45, promovido a `main` el 12-10-2026).** No funcionó
 (RUT + monto exacto repite el mismo monto en muchos negocios del mismo cliente).
 Se quitó la insignia del Pipeline, la pestaña de Reportería Softland y los
 endpoints; las columnas de `reporte_softland_facturas` se conservan. Ver
-`docs/HT-AP-03-nota-cambio-v1.45.md`. Sigue sin promover a `main` (necesita el
-OK de Luis Devoto). Siguiente: mover a Facturado desde Softland por NV/OC.
+`docs/HT-AP-03-nota-cambio-v1.45.md`. Siguiente: mover a Facturado desde Softland por NV/OC.
 
 **OT: de bloquear a alertar (v1.44, solo en `staging`).** Pedido de Luis
 Devoto: las exigencias de Programado/Ejecutado frenaban el uso del Pipeline.
