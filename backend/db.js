@@ -2319,6 +2319,28 @@ async function initDb() {
   // cuando se carga a mano en el CRM) no le aplique — las fechas igual se
   // guardan (vienen de Mantenimiento), solo se salta la exigencia de técnico.
   await db.run(`ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS mantenimiento_gestiona BOOLEAN NOT NULL DEFAULT false`);
+  // Sincronización completa de la OT con Mantenimiento (v1.48, ver
+  // services/mantenimientoSync.js y docs/HT-DO-XX-Sincronizacion-OT-v3.md).
+  // - mant_datos: lo que modela Mantenimiento y el CRM no (técnico, sala, equipo,
+  //   componente, prioridad, hora de inicio, avance...), tal cual lo manda.
+  // - sync_actualizado_en: hora del último cambio de la OT (acá o en
+  //   Mantenimiento); decide quién gana si se cambió en los dos lados. Nulo =
+  //   nunca se sincronizó (cualquier foto de Mantenimiento la pisa).
+  // - mantenimiento_sincronizado_en: última vez que se intercambió con éxito.
+  await db.run(`ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS mant_datos JSONB`);
+  await db.run(`ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS sync_actualizado_en TIMESTAMPTZ`);
+  await db.run(`ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS mantenimiento_sincronizado_en TIMESTAMPTZ`);
+  // Cola de salida hacia Mantenimiento: una fila por OT con cambios por enviar
+  // (si vuelve a cambiar, se reutiliza la fila: solo importa la última foto).
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS mantenimiento_outbox (
+      negocio_id INTEGER PRIMARY KEY REFERENCES negocios(id) ON DELETE CASCADE,
+      intentos INTEGER NOT NULL DEFAULT 0,
+      proximo_intento TIMESTAMPTZ NOT NULL DEFAULT now(),
+      ultimo_error TEXT
+    )
+  `);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_mantenimiento_outbox_proximo ON mantenimiento_outbox (proximo_intento)`);
   // Vínculo con la sucursal en Mantenimiento (Cliente › Sucursal › Sala): el
   // CRM no modela sucursales propias — consulta las de Mantenimiento en vivo
   // por RUT de la empresa y guarda acá cuál se eligió (o el nombre, si es una

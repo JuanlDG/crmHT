@@ -80,6 +80,9 @@ export default function DetalleOT() {
   const [horasEjecutadas, setHorasEjecutadas] = useState('');
   const [idFracttal, setIdFracttal] = useState('');
   const [guardandoProg, setGuardandoProg] = useState(false);
+  // Datos compartidos con Mantenimiento (v1.48)
+  const [mant, setMant] = useState({ hora_inicio: '', duracion_horas: '', prioridad: '', descripcion: '', avance: '' });
+  const [guardandoMant, setGuardandoMant] = useState(false);
 
   const cargar = async () => {
     try {
@@ -97,6 +100,11 @@ export default function DetalleOT() {
       setFechaEjecucion(data.fecha_ejecucion || '');
       setHorasEjecutadas(data.horas_ejecutadas ? String(Number(data.horas_ejecutadas)) : '');
       setIdFracttal(data.id_fracttal || '');
+      const d = data.mant_datos || {};
+      setMant({
+        hora_inicio: d.hora_inicio || '', duracion_horas: d.hora_inicio && data.horas_programadas ? String(Math.round(Number(data.horas_programadas))) : '',
+        prioridad: d.prioridad || '', descripcion: d.descripcion || '', avance: d.avance ?? '',
+      });
     } catch (err) { setError(err.response?.data?.error || 'No se pudo cargar la Orden de Trabajo.'); }
   };
   useEffect(() => { cargar(); }, [negocioId]); // eslint-disable-line
@@ -120,6 +128,20 @@ export default function DetalleOT() {
       setMsg('Programación guardada.'); cargar();
     } catch (err) { setError(err.response?.data?.error || 'No se pudo guardar la programación.'); }
     finally { setGuardandoProg(false); }
+  };
+
+  const guardarMantenimiento = async () => {
+    setError(''); setMsg(''); setGuardandoMant(true);
+    try {
+      const { data } = await api.put(`/ordenes-trabajo/${ot.id}/mantenimiento`, {
+        fecha_programada: fechaProgramada || null, fecha_ejecucion: fechaEjecucion || null,
+        hora_inicio: mant.hora_inicio || null, duracion_horas: mant.hora_inicio && mant.duracion_horas ? Number(mant.duracion_horas) : null,
+        prioridad: mant.prioridad || null, descripcion: mant.descripcion || null,
+        avance: mant.avance === '' ? null : Number(mant.avance),
+      });
+      setMsg(data.message); cargar();
+    } catch (err) { setError(err.response?.data?.error || 'No se pudo guardar.'); }
+    finally { setGuardandoMant(false); }
   };
 
   const setItem = (i, campo, val) => setItems(items.map((it, idx) => idx === i ? { ...it, [campo]: val } : it));
@@ -212,8 +234,9 @@ export default function DetalleOT() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Horas de trabajo programadas (por técnico)</label>
-            <input type="number" min="0" step="0.5" disabled={!ot.puede_editar} value={horas} onChange={e => setHoras(e.target.value)}
+            <input type="number" min="0" step="0.5" disabled={!ot.puede_editar || ot.mantenimiento_gestiona} value={horas} onChange={e => setHoras(e.target.value)}
               className="w-full border border-gray-300 rounded px-3 py-2 disabled:opacity-60" />
+            {ot.mantenimiento_gestiona && <p className="text-xs text-gray-500 mt-1">Las horas de esta OT son la duración de Mantenimiento: se editan abajo, en "Datos compartidos con Mantenimiento".</p>}
             {tecnicoIds.length > 1 && Number(horas) > 0 && (
               <p className="text-xs text-gray-500 mt-1">{tecnicoIds.length} técnicos × {horas} h = {tecnicoIds.length * Number(horas)} horas-hombre.</p>
             )}
@@ -254,6 +277,69 @@ export default function DetalleOT() {
           </button>
         )}
       </div>
+
+      {ot.mantenimiento_gestiona && (
+        <div className="bg-white border border-gray-200 rounded-lg p-5 mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-semibold text-ht-navy">Datos compartidos con Mantenimiento</h2>
+            {ot.mantenimiento_sync?.pendiente
+              ? <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5" title={ot.mantenimiento_sync.ultimo_error || ''}>Pendiente de enviar</span>
+              : <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-0.5">Sincronizada</span>}
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            La OT es la misma en el CRM y en Mantenimiento: lo que cambies aquí se envía de inmediato y lo que cambien allá aparece aquí.
+            Si dos personas cambian lo mismo a la vez, queda el último cambio. El estado es la etapa del negocio ({ot.mantenimiento_estado}).
+          </p>
+          <dl className="grid sm:grid-cols-3 gap-3 text-sm mb-4">
+            <div><dt className="text-xs text-gray-500">Técnico (se asigna en Mantenimiento)</dt><dd className="text-ht-navy">{ot.mant_datos?.tecnico?.nombre || '—'}</dd></div>
+            <div><dt className="text-xs text-gray-500">Sala</dt><dd className="text-ht-navy">{ot.mant_datos?.sala || '—'}</dd></div>
+            <div><dt className="text-xs text-gray-500">Equipo / componente</dt><dd className="text-ht-navy">{[ot.mant_datos?.equipo, ot.mant_datos?.componente].filter(Boolean).join(' › ') || '—'}</dd></div>
+          </dl>
+          <div className="grid sm:grid-cols-2 gap-4 text-sm">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Hora de inicio (jornada 09:00 a 17:30)</label>
+              <select disabled={!ot.puede_editar} value={mant.hora_inicio} onChange={e => setMant({ ...mant, hora_inicio: e.target.value, duracion_horas: e.target.value ? (mant.duracion_horas || '1') : '' })}
+                className="w-full border border-gray-300 rounded px-3 py-2 disabled:opacity-60">
+                <option value="">Sin hora</option>
+                {[9, 10, 11, 12, 13, 14, 15, 16, 17].map(h => <option key={h} value={`${String(h).padStart(2, '0')}:00`}>{String(h).padStart(2, '0')}:00</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Duración (horas)</label>
+              <select disabled={!ot.puede_editar || !mant.hora_inicio} value={mant.duracion_horas} onChange={e => setMant({ ...mant, duracion_horas: e.target.value })}
+                className="w-full border border-gray-300 rounded px-3 py-2 disabled:opacity-60">
+                <option value="">—</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(h => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Prioridad</label>
+              <select disabled={!ot.puede_editar} value={mant.prioridad} onChange={e => setMant({ ...mant, prioridad: e.target.value })}
+                className="w-full border border-gray-300 rounded px-3 py-2 disabled:opacity-60">
+                <option value="">Sin prioridad</option>
+                <option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Avance (%)</label>
+              <input type="number" min="0" max="100" disabled={!ot.puede_editar} value={mant.avance} onChange={e => setMant({ ...mant, avance: e.target.value })}
+                className="w-full border border-gray-300 rounded px-3 py-2 disabled:opacity-60" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">Descripción de la tarea</label>
+              <textarea rows={2} disabled={!ot.puede_editar} value={mant.descripcion} onChange={e => setMant({ ...mant, descripcion: e.target.value })}
+                className="w-full border border-gray-300 rounded px-3 py-2 disabled:opacity-60" />
+            </div>
+          </div>
+          {ot.puede_editar && (
+            <button onClick={guardarMantenimiento} disabled={guardandoMant}
+              className="mt-4 bg-ht-accent text-ht-navy px-4 py-2 rounded text-sm font-medium hover:bg-ht-accent/90 disabled:opacity-50">
+              {guardandoMant ? 'Guardando…' : 'Guardar y enviar a Mantenimiento'}
+            </button>
+          )}
+          <p className="text-xs text-gray-500 mt-2">Este botón también envía las fechas programada y de ejecución de la sección de arriba.</p>
+        </div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-lg p-5 mb-6">
         <h2 className="font-semibold text-ht-navy mb-3">Materiales y herramientas</h2>

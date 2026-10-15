@@ -8,6 +8,7 @@ const secuencias = require('../services/secuencias');
 const ot = require('../services/ot');
 const { requiereDatosOT } = ot;
 const mantenimientoOT = require('../services/mantenimientoOT');
+const mantenimientoSync = require('../services/mantenimientoSync');
 const { toCSV, parseCSV, fechaDDMMAAAA } = require('../utils/csv');
 const { uploadCSV } = require('../middleware/upload');
 const { mapearNegocios, PLANTILLA_HEADERS: PLANTILLA_HEADERS_NEGOCIOS, TIPOS_TRABAJO } = require('../services/import_negocios');
@@ -276,7 +277,7 @@ router.put('/:id', async (req, res) => {
 // para que hagan exactamente lo mismo que mover la tarjeta a mano en el
 // Pipeline. Errores de validación se lanzan con `.status` para que el caller
 // los traduzca a la respuesta HTTP.
-async function cambiarEtapaNegocio(negocioId, etapaId, { causa_no_cierre_id, causa_no_cierre_detalle, tipo_trabajo, permitirPerdidaSinCausa, horas_programadas, tecnico_ids, fecha_programada, fecha_ejecucion, horas_ejecutadas, id_fracttal } = {}, usuarioId) {
+async function cambiarEtapaNegocio(negocioId, etapaId, { causa_no_cierre_id, causa_no_cierre_detalle, tipo_trabajo, permitirPerdidaSinCausa, horas_programadas, tecnico_ids, fecha_programada, fecha_ejecucion, horas_ejecutadas, id_fracttal } = {}, usuarioId, { sinSync = false } = {}) {
   const etapa = await db.get('SELECT * FROM pipeline_etapas WHERE id = $1', [etapaId]);
   if (!etapa) { const e = new Error('Etapa inválida'); e.status = 400; throw e; }
 
@@ -384,6 +385,11 @@ async function cambiarEtapaNegocio(negocioId, etapaId, { causa_no_cierre_id, cau
       );
     }
   }
+
+  // Mantenimiento se entera de todo cambio de la OT (etapa, fechas, horas) por
+  // la sincronización; `sinSync` lo usa quien está aplicando justamente un
+  // cambio que vino de allá, para no devolvérselo.
+  if (!sinSync) await mantenimientoSync.marcarCambio(negocioId);
 
   return { negocio, etapa };
 }

@@ -11,6 +11,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const mantenimientoOT = require('../services/mantenimientoOT');
+const mantenimientoSync = require('../services/mantenimientoSync');
 
 function error(res, status, codigo, mensaje) {
   return res.status(status).json({ codigo, mensaje });
@@ -47,12 +48,50 @@ function negocioIdDe(req, res) {
   return negocioId;
 }
 
+// GET /ordenes-trabajo?actualizadas_desde=<ISO> — fotos de las OT cambiadas
+// desde esa hora, de la más vieja a la más nueva (hasta 200; `hay_mas` y
+// `siguiente` para continuar). Es la reconciliación de Mantenimiento.
+// Va antes de /:negocioId para que "ordenes-trabajo" sin id no se confunda.
+router.get('/ordenes-trabajo', async (req, res) => {
+  try {
+    const desde = req.query.actualizadas_desde;
+    if (desde && Number.isNaN(Date.parse(desde))) return error(res, 400, 'datos_invalidos', 'actualizadas_desde inválida (fecha ISO)');
+    res.json(await mantenimientoSync.fotosActualizadasDesde(desde));
+  } catch (err) {
+    console.error('[api_mantenimiento] Error al listar OT actualizadas', err);
+    error(res, 500, 'error_interno', 'Error interno');
+  }
+});
+
 router.get('/ordenes-trabajo/:negocioId', async (req, res) => {
   const negocioId = negocioIdDe(req, res);
   if (negocioId === null) return;
-  const ot = await mantenimientoOT.obtenerOTParaMantenimiento(negocioId);
+  const ot = await mantenimientoSync.construirFoto(negocioId);
   if (!ot) return error(res, 404, 'no_encontrado', 'No existe una OT para ese negocio');
   res.json(ot);
+});
+
+// PUT /ordenes-trabajo/:negocioId — Mantenimiento manda la foto completa de su
+// OT cada vez que cambia allá. Body: { ot: <foto> }. Se aplica si es más nueva
+// que la del CRM (el último cambio gana); si no, responde { aplicado: false,
+// ot: <foto del CRM> } para que Mantenimiento la adopte.
+router.put('/ordenes-trabajo/:negocioId', async (req, res) => {
+  const negocioId = negocioIdDe(req, res);
+  if (negocioId === null) return;
+  try {
+    const foto = (req.body || {}).ot;
+    if (!foto || typeof foto !== 'object') return error(res, 400, 'datos_invalidos', 'Falta la OT en el cuerpo ({ "ot": {...} })');
+    if (String(foto.negocio_id) !== String(negocioId)) return error(res, 400, 'datos_invalidos', 'negocio_id no coincide con la URL');
+    const r = await mantenimientoSync.aplicarFoto(foto);
+    res.json(r.aplicado ? { aplicado: true, actualizado_en: foto.actualizado_en } : r);
+  } catch (err) {
+    if (err instanceof mantenimientoSync.ErrorFoto) {
+      const codigo = { 400: 'datos_invalidos', 404: 'no_encontrado', 409: 'etapa_no_configurada' }[err.status] || 'error';
+      return error(res, err.status, codigo, err.message);
+    }
+    console.error('[api_mantenimiento] Error al aplicar la foto de Mantenimiento', err);
+    error(res, 500, 'error_interno', 'Error interno');
+  }
 });
 
 function registrarCambioEtapa(nombreEtapa) {
