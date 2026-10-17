@@ -136,6 +136,61 @@ router.get('/mis-ots', async (req, res) => {
   }
 });
 
+// GET /api/ordenes-trabajo/calendario?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// Calendario de Operaciones: las OT con fecha en el rango (programada, o de ejecución si no tiene) y la lista de
+// técnicos activos, para destacar los que no tienen trabajo ese día. El técnico de cada OT viene de ot_tecnicos (CRM) o,
+// si la OT la gestiona Mantenimiento, del bloque mant_datos.tecnico (se cruza por correo con los usuarios del CRM).
+// Solo para Operaciones: nunca devuelve montos.
+const PUEDE_VER_CALENDARIO = ['administrador', 'jefe_comercial', 'gerencia'];
+router.get('/calendario', async (req, res) => {
+  try {
+    if (!esOperaciones(req.user) && !PUEDE_VER_CALENDARIO.includes(req.user.rol)) return res.status(403).json({ error: 'Sin permiso' });
+    const { desde, hasta } = req.query;
+    const esFecha = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    if (!esFecha(desde) || !esFecha(hasta)) return res.status(400).json({ error: 'desde y hasta (AAAA-MM-DD) son obligatorios' });
+
+    const fechaOT = 'COALESCE(o.fecha_programada, o.fecha_ejecucion)';
+    const filas = await db.all(
+      `SELECT o.id AS ot_id, o.negocio_id, 'OT-' || o.negocio_id AS ot, n.titulo, n.tipo_trabajo,
+              e.razon_social AS cliente, pe.nombre AS etapa,
+              ${fechaOT}::text AS fecha, o.horas_programadas::float8 AS horas_programadas,
+              o.mant_datos->>'hora_inicio' AS hora_inicio, o.mant_datos->'tecnico' AS tecnico_mant
+       FROM ordenes_trabajo o
+       JOIN negocios n ON n.id = o.negocio_id
+       LEFT JOIN empresas e ON e.id = n.empresa_id
+       LEFT JOIN pipeline_etapas pe ON pe.id = n.etapa_id
+       WHERE ${fechaOT} BETWEEN $1 AND $2
+       ORDER BY ${fechaOT}, o.mant_datos->>'hora_inicio' NULLS LAST, o.negocio_id`,
+      [desde, hasta]
+    );
+    const tecnicos = await db.all(
+      `SELECT id, nombre, lower(email) AS email FROM users WHERE activo = true AND rol = 'tecnico' ORDER BY nombre`
+    );
+    const porEmail = new Map(tecnicos.map(t => [t.email, t]));
+    const asignados = new Map();
+    if (filas.length) {
+      const r = await db.all(
+        `SELECT t.ot_id, u.id, u.nombre FROM ot_tecnicos t JOIN users u ON u.id = t.user_id WHERE t.ot_id = ANY($1)`,
+        [filas.map(f => f.ot_id)]
+      );
+      r.forEach(x => { if (!asignados.has(x.ot_id)) asignados.set(x.ot_id, []); asignados.get(x.ot_id).push({ id: x.id, nombre: x.nombre }); });
+    }
+    const ots = filas.map(({ tecnico_mant, ot_id, horas_programadas, ...f }) => {
+      const lista = [...(asignados.get(ot_id) || [])];
+      const m = tecnico_mant && typeof tecnico_mant === 'object' ? tecnico_mant : null;
+      if (m && (m.email || m.nombre)) {
+        const u = m.email ? porEmail.get(String(m.email).toLowerCase()) : null;
+        if (!(u && lista.some(t => t.id === u.id))) lista.push({ id: u ? u.id : null, nombre: u ? u.nombre : (m.nombre || m.email) });
+      }
+      return { ...f, duracion_horas: horas_programadas ? Math.round(horas_programadas) : null, tecnicos: lista };
+    });
+    res.json({ ots, tecnicos: tecnicos.map(({ id, nombre }) => ({ id, nombre })) });
+  } catch (err) {
+    console.error('[ordenes_trabajo/GET /calendario]', err);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
 // GET /api/ordenes-trabajo/negocio/:negocioId — la vista de detalle de
 // negocio no conoce el id de la OT de antemano, solo el del negocio.
 router.get('/negocio/:negocioId', async (req, res) => {

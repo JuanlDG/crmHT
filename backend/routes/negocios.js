@@ -20,6 +20,9 @@ const PUEDE_REASIGNAR_VENDEDOR = ['administrador', 'jefe_comercial'];
 router.use(authenticate);
 router.use(async (req, res, next) => {
   try {
+    // El técnico (rol de terreno) no tiene acceso a negocios: sin esto podía listar todos, con sus montos.
+    // Con perfil Operaciones sí (y solo ve los del pipeline Operaciones, ver puedeVer).
+    if (req.user.rol === 'tecnico' && !req.user.es_encargado_operaciones) return res.status(403).json({ error: 'Sin permiso' });
     if (req.user.es_encargado_operaciones) {
       const p = await db.get(`SELECT id FROM pipelines WHERE nombre = 'Operaciones' AND activo = true LIMIT 1`);
       req.user.pipeline_operaciones_id = p ? p.id : null;
@@ -61,7 +64,7 @@ function puedeVer(negocio, user) {
 
 // Filtros compartidos entre el listado y la exportación.
 function filtrosNegocios(query, user) {
-  const { etapa_id, vendedor_id, pipeline_id, q, desde, hasta } = query;
+  const { etapa_id, vendedor_id, pipeline_id, q, desde, hasta, ot_desde, ot_hasta } = query;
   const clauses = [];
   const params = [];
   let i = 1;
@@ -77,6 +80,17 @@ function filtrosNegocios(query, user) {
   if (q) { clauses.push(`(n.titulo ILIKE $${i} OR c.nombre ILIKE $${i} OR e.razon_social ILIKE $${i})`); params.push(`%${q}%`); i++; }
   if (desde) { clauses.push(`n.fecha_cierre_estimada >= $${i++}`); params.push(desde); }
   if (hasta) { clauses.push(`n.fecha_cierre_estimada <= $${i++}`); params.push(hasta); }
+  // Operaciones: solo las OT cuya fecha (programada o de ejecución) cae en el rango, más las que todavía no tienen fecha
+  // (por programar) — esas siempre se ven, si no desaparecerían del tablero.
+  if (ot_desde || ot_hasta) {
+    const fechaOT = 'COALESCE(ot_f.fecha_ejecucion, ot_f.fecha_programada)';
+    const partes = [];
+    if (ot_desde) { partes.push(`${fechaOT} >= $${i++}`); params.push(ot_desde); }
+    if (ot_hasta) { partes.push(`${fechaOT} <= $${i++}`); params.push(ot_hasta); }
+    clauses.push(`(NOT EXISTS (SELECT 1 FROM ordenes_trabajo ot_f WHERE ot_f.negocio_id = n.id)
+      OR EXISTS (SELECT 1 FROM ordenes_trabajo ot_f WHERE ot_f.negocio_id = n.id AND ${fechaOT} IS NULL)
+      OR EXISTS (SELECT 1 FROM ordenes_trabajo ot_f WHERE ot_f.negocio_id = n.id AND ${partes.join(' AND ')}))`);
+  }
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
 }
 

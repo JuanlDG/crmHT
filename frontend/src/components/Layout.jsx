@@ -226,13 +226,16 @@ const IconDespacho = navIcon(<>
 const IconCobranza = navIcon(<>
   <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
 </>);
+const IconOperaciones = navIcon(<>
+  <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+</>);
 const IconServicioTecnico = navIcon(<>
   <circle cx="12" cy="12" r="3" />
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
 </>);
 
 const ICONO_POR_RUTA = {
-  '/dashboard': IconDashboard, '/pipeline': IconPipeline, '/cotizaciones': IconCotizaciones,
+  '/dashboard': IconDashboard, '/pipeline': IconPipeline, '/operaciones': IconOperaciones, '/cotizaciones': IconCotizaciones,
   '/tareas': IconTareas, '/bandeja': IconBandeja, '/cola': IconCola,
   '/empresas': IconEmpresas, '/contactos': IconContactos, '/productos': IconProductos, '/reportes': IconReportes,
   '/reportes/softland': IconReportes,
@@ -246,13 +249,20 @@ export default function Layout() {
   // call center o gerencia), si el usuario tiene el atributo marcado.
   const tienePostventaEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/postventa');
   const tieneDespachoEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/despacho');
-  const tienePipelineEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/pipeline');
+  const tieneOperacionesEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/operaciones');
   const tieneCobranzaEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/cobranza');
+  // Operaciones va justo debajo de Reportes: para administrador, jefe comercial y gerencia, y para quien tenga el
+  // perfil Operaciones (sea cual sea su rol).
+  const veOperaciones = ['administrador', 'jefe_comercial', 'gerencia'].includes(user?.rol) || user?.es_encargado_operaciones;
+  const menuBase = menuByRole[user?.rol] || [];
+  const iReportes = menuBase.findIndex(i => i.to === '/reportes');
+  const menuConOperaciones = veOperaciones && !tieneOperacionesEnMenu
+    ? [...menuBase.slice(0, iReportes >= 0 ? iReportes + 1 : menuBase.length), { label: 'Operaciones', to: '/operaciones' }, ...menuBase.slice(iReportes >= 0 ? iReportes + 1 : menuBase.length)]
+    : menuBase;
   const menu = [
-    ...(menuByRole[user?.rol] || []),
+    ...menuConOperaciones,
     ...(user?.es_encargado_postventa && !tienePostventaEnMenu ? [{ label: 'Postventa', to: '/postventa' }] : []),
     ...(user?.es_encargado_despacho && !tieneDespachoEnMenu ? [{ label: 'Despacho', to: '/despacho' }] : []),
-    ...(user?.es_encargado_operaciones && !tienePipelineEnMenu ? [{ label: 'Pipeline', to: '/pipeline' }] : []),
     ...(user?.es_encargado_cobranza && !tieneCobranzaEnMenu ? [{ label: 'Cobranza', to: '/cobranza' }] : []),
   ];
   const tieneConfigPostventa = (configByRole[user?.rol] || []).some(i => i.to === '/config/postventa-etapas');

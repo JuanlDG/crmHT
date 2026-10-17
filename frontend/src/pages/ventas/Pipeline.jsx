@@ -21,9 +21,19 @@ const PUEDE_EXPORTAR = ['administrador', 'jefe_comercial'];
 const PUEDE_CAMBIAR_PIPELINE = ['administrador', 'jefe_comercial', 'gerencia'];
 const PUEDE_MOVER_PIPELINE = ['administrador', 'jefe_comercial'];
 
-export default function Pipeline() {
+const mesActual = () => { const h = new Date(); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}`; };
+const rangoDeMes = mes => {
+  const [a, m] = mes.split('-').map(Number);
+  const dos = n => String(n).padStart(2, '0');
+  return [`${a}-${dos(m)}-01`, `${a}-${dos(m)}-${dos(new Date(a, m, 0).getDate())}`];
+};
+
+// `pipelineNombre`: modo Operaciones (sección Operaciones del menú) — el pipeline queda fijo y por defecto se ve el mes
+// actual (las OT cuya fecha cae en el mes, más las que aún no tienen fecha).
+export default function Pipeline({ pipelineNombre = null }) {
   const { user } = useAuth();
-  const puedeCambiarPipeline = PUEDE_CAMBIAR_PIPELINE.includes(user?.rol);
+  const modoOperaciones = Boolean(pipelineNombre);
+  const puedeCambiarPipeline = PUEDE_CAMBIAR_PIPELINE.includes(user?.rol) && !modoOperaciones;
   const puedeMoverPipeline = PUEDE_MOVER_PIPELINE.includes(user?.rol);
 
   // Filtros en la URL (28-08-2026): antes vivían solo en useState, así que
@@ -36,7 +46,8 @@ export default function Pipeline() {
   const [etapas, setEtapas] = useState([]);
   const [causas, setCausas] = useState([]);
   const [pipelines, setPipelines] = useState([]);
-  const [pipelineId, setPipelineId] = useState(() => Number(searchParams.get('pipeline_id')) || user?.pipeline_default_id || 1);
+  const [pipelineId, setPipelineId] = useState(() => (modoOperaciones ? null : Number(searchParams.get('pipeline_id')) || user?.pipeline_default_id || 1));
+  const [mes, setMes] = useState(() => (modoOperaciones ? (searchParams.has('mes') ? searchParams.get('mes') : mesActual()) : ''));
   const [vendedores, setVendedores] = useState([]);
   const [vendedorId, setVendedorId] = useState(() => searchParams.get('vendedor_id') || '');
   const [cierreDesde, setCierreDesde] = useState(() => searchParams.get('desde') || '');
@@ -51,10 +62,22 @@ export default function Pipeline() {
   const [modalProgramacion, setModalProgramacion] = useState(null); // {negocio, etapa} — Programado/Ejecutado de Operaciones
   const [showNuevo, setShowNuevo] = useState(false);
 
+  // En modo Operaciones el id del pipeline se busca por nombre.
+  useEffect(() => {
+    if (!modoOperaciones) return;
+    api.get('/config/pipelines')
+      .then(r => { const p = r.data.find(x => x.nombre === pipelineNombre); if (p) setPipelineId(p.id); else setError(`No existe el pipeline ${pipelineNombre}.`); })
+      .catch(() => setError('No se pudo cargar el pipeline.'));
+    // eslint-disable-next-line
+  }, []);
+
   const cargar = async () => {
+    if (pipelineId == null) return;
     try {
+      const [otDesde, otHasta] = modoOperaciones && mes ? rangoDeMes(mes) : [undefined, undefined];
       const { data } = await api.get('/negocios', {
         params: {
+          ot_desde: otDesde, ot_hasta: otHasta,
           pipeline_id: pipelineId,
           vendedor_id: vendedorId || undefined,
           desde: cierreDesde || undefined,
@@ -64,20 +87,22 @@ export default function Pipeline() {
       setNegocios(data);
     } catch { setError('No se pudieron cargar los negocios.'); }
   };
-  useEffect(() => { cargar(); }, [pipelineId, vendedorId, cierreDesde, cierreHasta]); // eslint-disable-line
+  useEffect(() => { cargar(); }, [pipelineId, vendedorId, cierreDesde, cierreHasta, mes]); // eslint-disable-line
 
   // Refleja los filtros en la URL (reemplaza la entrada actual del
   // historial, no agrega una nueva por cada tecla/cambio).
   useEffect(() => {
     const next = {};
     if (busqueda) next.q = busqueda;
-    if (pipelineId) next.pipeline_id = String(pipelineId);
+    if (pipelineId && !modoOperaciones) next.pipeline_id = String(pipelineId);
+    if (modoOperaciones) next.mes = mes; // '' = todos
+    if (searchParams.get('tab')) next.tab = searchParams.get('tab');
     if (vendedorId) next.vendedor_id = vendedorId;
     if (cierreDesde) next.desde = cierreDesde;
     if (cierreHasta) next.hasta = cierreHasta;
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line
-  }, [busqueda, pipelineId, vendedorId, cierreDesde, cierreHasta]);
+  }, [busqueda, pipelineId, vendedorId, cierreDesde, cierreHasta, mes]);
 
   useEffect(() => {
     if (puedeCambiarPipeline) {
@@ -88,6 +113,7 @@ export default function Pipeline() {
   }, []);
 
   useEffect(() => {
+    if (pipelineId == null) return;
     api.get('/config/pipeline-etapas', { params: { pipeline_id: pipelineId } }).then(r => setEtapas(r.data.filter(e => e.activo))).catch(() => {});
     api.get('/config/causas-no-cierre').then(r => setCausas(r.data.filter(c => c.activo))).catch(() => {});
   }, [pipelineId]);
@@ -179,7 +205,7 @@ export default function Pipeline() {
   return (
     <div className="h-full flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 flex-shrink-0">
-        <h1 className="text-2xl font-bold text-ht-navy">Pipeline</h1>
+        {!modoOperaciones && <h1 className="text-2xl font-bold text-ht-navy">Pipeline</h1>}
         <div className="flex gap-2">
           {PUEDE_EXPORTAR.includes(user?.rol) && (
             <button onClick={exportar} className="px-4 py-2 rounded text-sm font-medium border border-ht-navy text-ht-navy hover:bg-ht-navy/5">
@@ -208,6 +234,15 @@ export default function Pipeline() {
             </select>
           </div>
         )}
+        {modoOperaciones && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Mes</label>
+            <input type="month" value={mes} onChange={e => setMes(e.target.value)}
+              className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ht-accent" />
+            {mes && <button type="button" onClick={() => setMes('')} className="text-sm text-ht-navy underline">Ver todo</button>}
+            {!mes && <button type="button" onClick={() => setMes(mesActual())} className="text-sm text-ht-navy underline">Mes actual</button>}
+          </div>
+        )}
         {puedeCambiarPipeline && (
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Vendedor</label>
@@ -218,7 +253,7 @@ export default function Pipeline() {
             </select>
           </div>
         )}
-        <div className="flex items-center gap-2 text-sm">
+        {!modoOperaciones && <div className="flex items-center gap-2 text-sm">
           <span className="text-gray-600">Fecha estimada de cierre:</span>
           <input type="date" value={cierreDesde} onChange={e => setCierreDesde(e.target.value)}
             className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ht-accent" />
@@ -228,7 +263,7 @@ export default function Pipeline() {
           {(cierreDesde || cierreHasta) && (
             <button onClick={() => { setCierreDesde(''); setCierreHasta(''); }} className="text-xs text-ht-accent hover:underline">limpiar</button>
           )}
-        </div>
+        </div>}
       </div>
 
       {(cierreDesde || cierreHasta) && (
