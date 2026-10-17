@@ -284,7 +284,7 @@ export default function Pipeline() {
                     {n.tiene_ot && (
                       <Link to={`/negocios/${n.id}/ot`} draggable={false}
                         className="inline-block mt-2 text-xs font-medium text-ht-navy border border-ht-navy/30 rounded px-2 py-1 hover:bg-ht-navy/5">
-                        Ver OT
+                        Ver OT {n.id}
                       </Link>
                     )}
                     {n.ot_alertas?.length > 0 && (
