@@ -51,6 +51,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       pipeline_default_id: user.pipeline_default_id,
       es_encargado_postventa: user.es_encargado_postventa,
       es_encargado_despacho: user.es_encargado_despacho,
+      es_encargado_operaciones: user.es_encargado_operaciones,
       es_encargado_cobranza: user.es_encargado_cobranza,
       must_change_password: user.must_change_password,
     };

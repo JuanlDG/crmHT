@@ -592,6 +592,10 @@ async function initDb() {
   // es_encargado_postventa): quien la tenga gestiona el módulo de Despacho
   // completo (agrega/edita paradas, las marca completadas, sube fotos).
   await db.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS es_encargado_despacho BOOLEAN NOT NULL DEFAULT false`);
+  // Perfil Operaciones (17-10-2026): quien lo tenga ve y edita las OT y los
+  // negocios del pipeline Operaciones sin importar su rol (mismo patrón que
+  // es_encargado_postventa / es_encargado_despacho).
+  await db.run(`ALTER TABLE users ADD COLUMN IF NOT EXISTS es_encargado_operaciones BOOLEAN NOT NULL DEFAULT false`);
 
   // Lugares frecuentes de retiro/entrega (ej. "Vulcano", "Koslan"): solo
   // dirección/comuna/contacto — el tipo (retiro/entrega) y el documento se
@@ -1777,7 +1781,7 @@ async function initDb() {
         // el token por SQL (se guardaba en texto plano) y tomar la cuenta
         // (auditoría 23-09-2026, M-A4).
         await db.run(`REVOKE SELECT ON users FROM ${rolBI}`);
-        await db.run(`GRANT SELECT (id, nombre, email, rol, activo, area, es_encargado_postventa, es_encargado_despacho, es_encargado_cobranza, pipeline_default_id, codigo_softland, recibe_round_robin, created_at) ON users TO ${rolBI}`);
+        await db.run(`GRANT SELECT (id, nombre, email, rol, activo, area, es_encargado_postventa, es_encargado_despacho, es_encargado_operaciones, es_encargado_cobranza, pipeline_default_id, codigo_softland, recibe_round_robin, created_at) ON users TO ${rolBI}`);
         console.log(`[DB] Permisos de solo lectura sincronizados para "${rolBI}" (incluye tablas futuras; "users" acotado a columnas no sensibles).`);
       } catch (err) {
         console.error(`[DB] No se pudo aprovisionar el rol de solo lectura "${rolBI}": ${err.message}`);

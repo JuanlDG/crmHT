@@ -66,8 +66,8 @@ function TarjetaOT({ ot, ejecutada, mostrarTecnicos }) {
 
 export default function MisOTs() {
   const { user } = useAuth();
-  const esTecnico = user?.rol === 'tecnico';
-  const veTodos = PUEDE_VER_TECNICOS.includes(user?.rol);
+  const esTecnico = user?.rol === 'tecnico' && !user?.es_encargado_operaciones;
+  const veTodos = PUEDE_VER_TECNICOS.includes(user?.rol) || user?.es_encargado_operaciones === true;
 
   const [vista, setVista] = useState('programadas');
   const [mes, setMes] = useState('todos');

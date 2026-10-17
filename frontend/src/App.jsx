@@ -115,13 +115,13 @@ export default function App() {
 
             {/* Etapa 2 — Cotizador y pipeline */}
             <Route path="pipeline" element={
-              <ProtectedRoute roles={ROLES_SIN_TECNICO}><Pipeline /></ProtectedRoute>
+              <ProtectedRoute roles={ROLES_SIN_TECNICO} flag="es_encargado_operaciones"><Pipeline /></ProtectedRoute>
             } />
             <Route path="pipeline/importar" element={
               <ProtectedRoute roles={['administrador', 'jefe_comercial']}><ImportarNegocios /></ProtectedRoute>
             } />
             <Route path="negocios/:id" element={
-              <ProtectedRoute roles={ROLES_SIN_TECNICO}><DetalleNegocio /></ProtectedRoute>
+              <ProtectedRoute roles={ROLES_SIN_TECNICO} flag="es_encargado_operaciones"><DetalleNegocio /></ProtectedRoute>
             } />
             <Route path="negocios/:negocioId/ot" element={
               <ProtectedRoute roles={[...ROLES_SIN_TECNICO, 'tecnico']}><DetalleOT /></ProtectedRoute>

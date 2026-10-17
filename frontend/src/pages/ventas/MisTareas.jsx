@@ -76,7 +76,7 @@ export default function MisTareas() {
 
       {/* Órdenes de trabajo asignadas (técnico) o de todos los técnicos (administrador, jefe comercial, gerencia) */}
       <MisOTs />
-      {['tecnico', 'administrador', 'jefe_comercial', 'gerencia'].includes(user?.rol) && (
+      {(['tecnico', 'administrador', 'jefe_comercial', 'gerencia'].includes(user?.rol) || user?.es_encargado_operaciones) && (
         <h2 className="text-lg font-bold text-ht-navy mb-3">Tareas</h2>
       )}
 

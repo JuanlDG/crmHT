@@ -14,8 +14,12 @@ const mantenimientoSync = require('../services/mantenimientoSync');
 router.use(authenticate);
 
 const PUEDE_VER_TODAS = ['administrador', 'jefe_comercial', 'gerencia', 'callcenter'];
+// Perfil Operaciones (es_encargado_operaciones): ve y edita todas las OT sin
+// importar su rol, y ve precios aunque su rol sea técnico.
+const esOperaciones = user => user.es_encargado_operaciones === true;
+const esTecnicoSinPerfil = user => user.rol === 'tecnico' && !esOperaciones(user);
 function puedeVer(negocio, user) {
-  return PUEDE_VER_TODAS.includes(user.rol) || (user.rol === 'vendedor' && negocio && negocio.vendedor_id === user.id);
+  return esOperaciones(user) || PUEDE_VER_TODAS.includes(user.rol) || (user.rol === 'vendedor' && negocio && negocio.vendedor_id === user.id);
 }
 // Lectura (v1.40): además de los roles de siempre, un técnico puede ver las
 // OT en las que está asignado — solo lectura y sin precios.
@@ -32,7 +36,7 @@ async function puedeVerOT(negocio, user) {
 const sinPrecios = items => items.map(({ precio_unitario, total_linea, ...resto }) => resto);
 
 function puedeEditar(negocio, user) {
-  return negocio && (user.rol === 'administrador' || user.rol === 'jefe_comercial' || negocio.vendedor_id === user.id);
+  return negocio && (esOperaciones(user) || user.rol === 'administrador' || user.rol === 'jefe_comercial' || negocio.vendedor_id === user.id);
 }
 
 // Cada línea necesita tipo válido, cantidad > 0, precio (si viene) >= 0, y
@@ -65,8 +69,8 @@ async function negocioDeOT(otId) {
 const PUEDE_VER_TECNICOS = ['administrador', 'jefe_comercial', 'gerencia'];
 router.get('/mis-ots', async (req, res) => {
   try {
-    const esTecnico = req.user.rol === 'tecnico';
-    if (!esTecnico && !PUEDE_VER_TECNICOS.includes(req.user.rol)) return res.status(403).json({ error: 'Sin permiso' });
+    const esTecnico = esTecnicoSinPerfil(req.user);
+    if (!esTecnico && !esOperaciones(req.user) && !PUEDE_VER_TECNICOS.includes(req.user.rol)) return res.status(403).json({ error: 'Sin permiso' });
 
     const estado = req.query.estado === 'ejecutadas' ? 'ejecutadas' : 'programadas';
     const params = [];
@@ -148,7 +152,7 @@ router.get('/negocio/:negocioId', async (req, res) => {
       ...completa.ot, numero: `OT-${completa.ot.negocio_id}`, tecnicos: completa.tecnicos, alertas: alerta ? alerta.alertas : [],
       mantenimiento_estado: await mantenimientoSync.estadoDeNegocio(negocio.id),
       mantenimiento_sync: cola ? { pendiente: true, intentos: cola.intentos, ultimo_error: cola.ultimo_error } : { pendiente: false },
-      items: req.user.rol === 'tecnico' ? sinPrecios(completa.items) : completa.items,
+      items: esTecnicoSinPerfil(req.user) ? sinPrecios(completa.items) : completa.items,
       puede_editar: puedeEditar(negocio, req.user),
     });
   } catch (err) {
@@ -295,7 +299,7 @@ router.get('/:id/pdf', async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="OT-${completa.ot.negocio_id}.pdf"`);
     await generarOTPDF({
       ot: completa.ot,
-      items: req.user.rol === 'tecnico' ? sinPrecios(completa.items) : completa.items,
+      items: esTecnicoSinPerfil(req.user) ? sinPrecios(completa.items) : completa.items,
       tecnicos: completa.tecnicos,
       cliente: {
         contacto_nombre: completa.ot.contacto_nombre, contacto_apellido: completa.ot.contacto_apellido,

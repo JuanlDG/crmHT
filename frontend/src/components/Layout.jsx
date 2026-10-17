@@ -246,11 +246,13 @@ export default function Layout() {
   // call center o gerencia), si el usuario tiene el atributo marcado.
   const tienePostventaEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/postventa');
   const tieneDespachoEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/despacho');
+  const tienePipelineEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/pipeline');
   const tieneCobranzaEnMenu = (menuByRole[user?.rol] || []).some(i => i.to === '/cobranza');
   const menu = [
     ...(menuByRole[user?.rol] || []),
     ...(user?.es_encargado_postventa && !tienePostventaEnMenu ? [{ label: 'Postventa', to: '/postventa' }] : []),
     ...(user?.es_encargado_despacho && !tieneDespachoEnMenu ? [{ label: 'Despacho', to: '/despacho' }] : []),
+    ...(user?.es_encargado_operaciones && !tienePipelineEnMenu ? [{ label: 'Pipeline', to: '/pipeline' }] : []),
     ...(user?.es_encargado_cobranza && !tieneCobranzaEnMenu ? [{ label: 'Cobranza', to: '/cobranza' }] : []),
   ];
   const tieneConfigPostventa = (configByRole[user?.rol] || []).some(i => i.to === '/config/postventa-etapas');

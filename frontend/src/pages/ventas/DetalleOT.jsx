@@ -65,7 +65,7 @@ function BuscadorProducto({ value, onChange, onElegir }) {
 export default function DetalleOT() {
   const { negocioId } = useParams();
   const { user } = useAuth();
-  const esTecnico = user?.rol === 'tecnico'; // solo lectura y sin precios
+  const esTecnico = user?.rol === 'tecnico' && !user?.es_encargado_operaciones; // solo lectura y sin precios
   const [ot, setOt] = useState(null);
   const [items, setItems] = useState([]);
   const [observaciones, setObservaciones] = useState('');

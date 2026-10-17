@@ -18,6 +18,15 @@ const PUEDE_IMPORTAR_NEGOCIOS = ['administrador', 'jefe_comercial'];
 const PUEDE_REASIGNAR_VENDEDOR = ['administrador', 'jefe_comercial'];
 
 router.use(authenticate);
+router.use(async (req, res, next) => {
+  try {
+    if (req.user.es_encargado_operaciones) {
+      const p = await db.get(`SELECT id FROM pipelines WHERE nombre = 'Operaciones' AND activo = true LIMIT 1`);
+      req.user.pipeline_operaciones_id = p ? p.id : null;
+    }
+    next();
+  } catch (err) { next(err); }
+});
 
 // Sucursales de un cliente en Mantenimiento, por RUT (consulta en vivo — el
 // CRM no mantiene su propia copia, ver nota en db.js sobre
@@ -30,15 +39,23 @@ router.get('/sucursales-sugeridas', async (req, res) => {
   res.json(sucursales);
 });
 
+// Perfil Operaciones (es_encargado_operaciones): ve y edita los negocios del
+// pipeline Operaciones sin importar su rol. El id del pipeline lo pone el
+// middleware de más abajo en req.user.pipeline_operaciones_id.
+function esOperacionesDe(negocio, user) {
+  return user.es_encargado_operaciones === true && user.pipeline_operaciones_id != null
+    && Number(negocio.pipeline_id) === Number(user.pipeline_operaciones_id);
+}
+
 function puedeEditar(negocio, user) {
-  return user.rol === 'administrador' || user.rol === 'jefe_comercial' || negocio.vendedor_id === user.id;
+  return user.rol === 'administrador' || user.rol === 'jefe_comercial' || negocio.vendedor_id === user.id || esOperacionesDe(negocio, user);
 }
 
 // Visibilidad (matriz de permisos v1.6): admin/jefe comercial ven cualquiera,
 // call center y gerencia ven (sin editar), vendedor solo los propios.
 const PUEDE_VER_TODOS = ['administrador', 'jefe_comercial', 'callcenter', 'gerencia'];
 function puedeVer(negocio, user) {
-  if (PUEDE_VER_TODOS.includes(user.rol)) return true;
+  if (PUEDE_VER_TODOS.includes(user.rol) || esOperacionesDe(negocio, user)) return true;
   return user.rol === 'vendedor' && negocio.vendedor_id === user.id;
 }
 
@@ -51,8 +68,12 @@ function filtrosNegocios(query, user) {
   if (etapa_id) { clauses.push(`n.etapa_id = $${i++}`); params.push(etapa_id); }
   if (pipeline_id) { clauses.push(`n.pipeline_id = $${i++}`); params.push(pipeline_id); }
   // Un vendedor solo ve los suyos, sin importar qué vendedor_id se pida.
-  if (user.rol === 'vendedor') { clauses.push(`n.vendedor_id = $${i++}`); params.push(user.id); }
-  else if (vendedor_id) { clauses.push(`n.vendedor_id = $${i++}`); params.push(vendedor_id); }
+  if (user.rol === 'vendedor') {
+    // Con perfil Operaciones, además de los suyos ve todos los del pipeline Operaciones.
+    if (user.es_encargado_operaciones && user.pipeline_operaciones_id != null) {
+      clauses.push(`(n.vendedor_id = $${i} OR n.pipeline_id = $${i + 1})`); params.push(user.id, user.pipeline_operaciones_id); i += 2;
+    } else { clauses.push(`n.vendedor_id = $${i++}`); params.push(user.id); }
+  } else if (vendedor_id) { clauses.push(`n.vendedor_id = $${i++}`); params.push(vendedor_id); }
   if (q) { clauses.push(`(n.titulo ILIKE $${i} OR c.nombre ILIKE $${i} OR e.razon_social ILIKE $${i})`); params.push(`%${q}%`); i++; }
   if (desde) { clauses.push(`n.fecha_cierre_estimada >= $${i++}`); params.push(desde); }
   if (hasta) { clauses.push(`n.fecha_cierre_estimada <= $${i++}`); params.push(hasta); }
