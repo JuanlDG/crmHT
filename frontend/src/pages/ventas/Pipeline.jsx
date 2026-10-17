@@ -29,6 +29,37 @@ const rangoDeMes = mes => {
   return [`${a}-${dos(m)}-01`, `${a}-${dos(m)}-${dos(new Date(a, m, 0).getDate())}`];
 };
 
+// Fechas de la tarjeta de Operaciones. Antigüedad de lo ejecutado y sin facturar: ámbar desde 30 días, rojo desde 60.
+const diasDesde = iso => Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(`${iso.slice(0, 10)}T00:00:00`).getTime()) / 86400000);
+const fechaCorta = iso => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '');
+const claseAntiguedad = d => (d >= 60 ? 'bg-red-100 text-red-700' : d >= 30 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600');
+function FechasOperaciones({ n }) {
+  const etapa = String(n.etapa_nombre || '').trim().toLowerCase();
+  if (etapa === 'aceptado' || etapa === 'programado') {
+    return n.fecha_programada ? <div className="text-xs text-gray-500">Programado para {fechaCorta(n.fecha_programada)}</div> : null;
+  }
+  if (etapa === 'ejecutado') {
+    if (!n.fecha_ejecucion) return null;
+    const d = diasDesde(n.fecha_ejecucion);
+    return (
+      <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
+        Ejecutado {fechaCorta(n.fecha_ejecucion)}
+        <span className={`text-[11px] px-1.5 py-0.5 rounded ${claseAntiguedad(d)}`}>hace {d} {d === 1 ? 'día' : 'días'} sin facturar</span>
+      </div>
+    );
+  }
+  if (etapa === 'facturado' || etapa === 'ganado') {
+    const f = n.fecha_facturacion_efectiva;
+    const lag = n.fecha_ejecucion && f ? Math.round((new Date(`${f.slice(0, 10)}T00:00:00`) - new Date(`${n.fecha_ejecucion.slice(0, 10)}T00:00:00`)) / 86400000) : null;
+    return (
+      <div className="text-xs text-gray-500">
+        {n.fecha_ejecucion && <>Ejecutado {fechaCorta(n.fecha_ejecucion)} · </>}Facturado {f ? fechaCorta(f) : '—'}{lag !== null && lag >= 0 ? ` (${lag} d)` : ''}
+      </div>
+    );
+  }
+  return null;
+}
+
 // `pipelineNombre`: modo Operaciones (sección Operaciones del menú) — el pipeline queda fijo y por defecto se ve el mes
 // actual (las OT cuya fecha cae en el mes, más las que aún no tienen fecha).
 export default function Pipeline({ pipelineNombre = null }) {
@@ -49,6 +80,11 @@ export default function Pipeline({ pipelineNombre = null }) {
   const [pipelines, setPipelines] = useState([]);
   const [pipelineId, setPipelineId] = useState(() => (modoOperaciones ? null : Number(searchParams.get('pipeline_id')) || user?.pipeline_default_id || 1));
   const [mes, setMes] = useState(() => (modoOperaciones ? (searchParams.has('mes') ? searchParams.get('mes') : mesActual()) : ''));
+  // Facturación (modo Operaciones): mes en que se facturó, y el atajo "Por facturar" (ejecutado y sin facturar, de cualquier mes).
+  const [factMes, setFactMes] = useState(() => (modoOperaciones ? (searchParams.get('fmes') || '') : ''));
+  const [porFacturar, setPorFacturar] = useState(() => modoOperaciones && searchParams.get('pf') === '1');
+  const [modalFacturado, setModalFacturado] = useState(null); // {negocio, etapa}
+  const [fechaFacturado, setFechaFacturado] = useState('');
   const [vendedores, setVendedores] = useState([]);
   const [vendedorId, setVendedorId] = useState(() => searchParams.get('vendedor_id') || '');
   const [cierreDesde, setCierreDesde] = useState(() => searchParams.get('desde') || '');
@@ -76,9 +112,11 @@ export default function Pipeline({ pipelineNombre = null }) {
     if (pipelineId == null) return;
     try {
       const [otDesde, otHasta] = modoOperaciones && mes ? rangoDeMes(mes) : [undefined, undefined];
+      const [factDesde, factHasta] = modoOperaciones && factMes ? rangoDeMes(factMes) : [undefined, undefined];
       const { data } = await api.get('/negocios', {
         params: {
-          ot_desde: otDesde, ot_hasta: otHasta,
+          ot_desde: otDesde, ot_hasta: otHasta, fact_desde: factDesde, fact_hasta: factHasta,
+          por_facturar: modoOperaciones && porFacturar ? '1' : undefined,
           pipeline_id: pipelineId,
           vendedor_id: vendedorId || undefined,
           desde: cierreDesde || undefined,
@@ -88,7 +126,7 @@ export default function Pipeline({ pipelineNombre = null }) {
       setNegocios(data);
     } catch { setError('No se pudieron cargar los negocios.'); }
   };
-  useEffect(() => { cargar(); }, [pipelineId, vendedorId, cierreDesde, cierreHasta, mes]); // eslint-disable-line
+  useEffect(() => { cargar(); }, [pipelineId, vendedorId, cierreDesde, cierreHasta, mes, factMes, porFacturar]); // eslint-disable-line
 
   // Refleja los filtros en la URL (reemplaza la entrada actual del
   // historial, no agrega una nueva por cada tecla/cambio).
@@ -96,14 +134,14 @@ export default function Pipeline({ pipelineNombre = null }) {
     const next = {};
     if (busqueda) next.q = busqueda;
     if (pipelineId && !modoOperaciones) next.pipeline_id = String(pipelineId);
-    if (modoOperaciones) next.mes = mes; // '' = todos
+    if (modoOperaciones) { next.mes = mes; if (factMes) next.fmes = factMes; if (porFacturar) next.pf = '1'; } // mes '' = todos
     if (searchParams.get('tab')) next.tab = searchParams.get('tab');
     if (vendedorId) next.vendedor_id = vendedorId;
     if (cierreDesde) next.desde = cierreDesde;
     if (cierreHasta) next.hasta = cierreHasta;
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line
-  }, [busqueda, pipelineId, vendedorId, cierreDesde, cierreHasta, mes]);
+  }, [busqueda, pipelineId, vendedorId, cierreDesde, cierreHasta, mes, factMes, porFacturar]);
 
   useEffect(() => {
     if (puedeCambiarPipeline) {
@@ -141,6 +179,8 @@ export default function Pipeline({ pipelineNombre = null }) {
     if (etapa.nombre.toLowerCase() === 'aceptado' && !negocio.tipo_trabajo) {
       setModalAceptado({ negocio, etapa }); setTipoTrabajoSel(''); return;
     }
+    // Facturado: se pregunta la fecha de facturación (opcional; por defecto hoy).
+    if (etapa.nombre.toLowerCase() === 'facturado') { setModalFacturado({ negocio, etapa }); setFechaFacturado(new Date().toISOString().slice(0, 10)); return; }
     // Programación de OT (v1.40; desde v1.44 no bloquea, solo alerta): Programado pide horas y técnicos;
     // Ejecutado, además, fecha de ejecución.
     if (pideDatosOT(etapa)) { setModalProgramacion({ negocio, etapa }); return; }
@@ -167,6 +207,11 @@ export default function Pipeline({ pipelineNombre = null }) {
       setModalProgramacion(null); cargar();
       return null;
     } catch (err) { return err.response?.data?.error || 'No se pudo cambiar la etapa.'; }
+  };
+
+  const confirmarFacturado = async () => {
+    await mover(modalFacturado.negocio, modalFacturado.etapa, { fecha_facturacion: fechaFacturado || undefined });
+    setModalFacturado(null);
   };
 
   const confirmarAceptado = async () => {
@@ -244,6 +289,24 @@ export default function Pipeline({ pipelineNombre = null }) {
             {!mes && <button type="button" onClick={() => setMes(mesActual())} className="text-sm text-ht-navy underline">Mes actual</button>}
           </div>
         )}
+        {modoOperaciones && (
+          <>
+            <div className="flex items-center gap-2" title="Mes en que se facturó. Al elegirlo se ven solo los facturados de ese mes.">
+              <label className="text-sm text-gray-700">Facturación</label>
+              <input type="month" value={factMes} onChange={e => { setFactMes(e.target.value); if (e.target.value) { setMes(''); setPorFacturar(false); } }}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ht-accent" />
+              {factMes && <button type="button" onClick={() => { setFactMes(''); setMes(mesActual()); }} className="text-sm text-ht-navy underline">Quitar</button>}
+            </div>
+            <button type="button" onClick={() => { setPorFacturar(v => !v); setFactMes(''); setMes(''); }}
+              className={`px-3 py-1.5 rounded text-sm border ${porFacturar ? 'bg-ht-navy text-white border-ht-navy' : 'border-ht-navy text-ht-navy hover:bg-ht-navy/5'}`}>
+              Por facturar
+            </button>
+            <button type="button" onClick={() => { setPorFacturar(false); setFactMes(mesActual()); setMes(''); }}
+              className="px-3 py-1.5 rounded text-sm border border-ht-navy text-ht-navy hover:bg-ht-navy/5">
+              Facturados del mes
+            </button>
+          </>
+        )}
         {puedeCambiarPipeline && (
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Vendedor</label>
@@ -308,6 +371,7 @@ export default function Pipeline({ pipelineNombre = null }) {
                     <div className="text-xs text-gray-500 mt-1">{n.contacto_nombre} {n.contacto_apellido}</div>
                     {n.empresa_nombre && <div className="text-xs text-gray-400">{n.empresa_nombre}</div>}
                     {n.sucursal_nombre && <div className="text-xs text-gray-500">Sucursal: {n.sucursal_nombre}</div>}
+                    {modoOperaciones && <FechasOperaciones n={n} />}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs font-medium text-ht-navy">{money(n.monto_estimado)}</span>
                       <span className="text-[11px] text-gray-400">{n.probabilidad_cierre ?? et.probabilidad_cierre}%</span>
@@ -395,6 +459,20 @@ export default function Pipeline({ pipelineNombre = null }) {
             <button onClick={confirmarAceptado} disabled={!tipoTrabajoSel}
               className="bg-ht-accent text-ht-navy px-4 py-2 rounded text-sm font-medium hover:bg-ht-accent/90 disabled:opacity-50">Confirmar</button>
             <button onClick={() => setModalAceptado(null)} className="px-4 py-2 rounded text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
+          </div>
+        </Modal>
+      )}
+
+      {modalFacturado && (
+        <Modal onClose={() => setModalFacturado(null)}>
+          <h2 className="font-semibold text-ht-navy text-lg mb-1">Pasar a "{modalFacturado.etapa.nombre}"</h2>
+          <p className="text-sm text-gray-600 mb-3">{modalFacturado.negocio.titulo}</p>
+          <label className="block text-sm text-gray-700 mb-1">Fecha de facturación (opcional)</label>
+          <input type="date" value={fechaFacturado} onChange={e => setFechaFacturado(e.target.value)}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-ht-accent" />
+          <div className="flex gap-2">
+            <button onClick={confirmarFacturado} className="bg-ht-accent text-ht-navy px-4 py-2 rounded text-sm font-medium hover:bg-ht-accent/90">Confirmar</button>
+            <button onClick={() => setModalFacturado(null)} className="px-4 py-2 rounded text-sm border border-gray-300 text-gray-600 hover:bg-gray-50">Cancelar</button>
           </div>
         </Modal>
       )}

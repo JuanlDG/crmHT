@@ -35,6 +35,7 @@ export default function DetalleNegocio() {
   const [prob, setProb] = useState('');
   const [monto, setMonto] = useState('');
   const [sucursal, setSucursal] = useState({ nombre: '', id: null });
+  const [fechaFacturacion, setFechaFacturacion] = useState('');
   const [fechaEstimada, setFechaEstimada] = useState('');
   const [fechaCompromiso, setFechaCompromiso] = useState('');
   const [modalPerdido, setModalPerdido] = useState(null); // etapa perdida
@@ -53,6 +54,7 @@ export default function DetalleNegocio() {
     try {
       const { data } = await api.get(`/negocios/${id}`); setN(data); setProb(data.probabilidad_cierre ?? '');
       setMonto(data.monto_estimado ?? '');
+      setFechaFacturacion(data.fecha_facturacion || '');
       setSucursal({ nombre: data.sucursal_nombre || '', id: data.mantenimiento_sucursal_id ?? null });
       setFechaEstimada(data.fecha_cierre_estimada ? data.fecha_cierre_estimada.slice(0, 10) : '');
       setFechaCompromiso(data.fecha_compromiso ? data.fecha_compromiso.slice(0, 10) : '');
@@ -84,6 +86,11 @@ export default function DetalleNegocio() {
   const guardarSucursal = async () => {
     try { await api.put(`/negocios/${id}`, { sucursal_nombre: sucursal.nombre || '', mantenimiento_sucursal_id: sucursal.id }); cargar(); }
     catch (err) { setError(err.response?.data?.error || 'No se pudo guardar la sucursal.'); }
+  };
+
+  const guardarFechaFacturacion = async () => {
+    try { await api.put(`/negocios/${id}`, { fecha_facturacion: fechaFacturacion || null }); cargar(); }
+    catch (err) { setError(err.response?.data?.error || 'No se pudo guardar la fecha de facturación.'); }
   };
 
   const guardarMonto = async () => {
@@ -293,6 +300,18 @@ export default function DetalleNegocio() {
               {n.puede_editar && <button onClick={guardarSucursal} className="bg-ht-accent text-ht-navy px-3 py-2 rounded text-sm hover:bg-ht-accent/90">Guardar</button>}
             </div>
           </div>
+
+          {['ejecutado', 'facturado', 'ganado'].includes(String(n.etapa_nombre || '').trim().toLowerCase()) && (
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <h2 className="font-semibold text-ht-navy mb-2">Fecha de facturación</h2>
+              <p className="text-xs text-gray-500 mb-2">Opcional. Se usa para filtrar el pipeline de Operaciones por mes de facturación; si falta, se usa la fecha de cierre.</p>
+              <div className="flex items-center gap-2">
+                <input type="date" value={fechaFacturacion} disabled={!n.puede_editar} onChange={e => setFechaFacturacion(e.target.value)}
+                  className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ht-accent" />
+                {n.puede_editar && <button onClick={guardarFechaFacturacion} className="bg-ht-accent text-ht-navy px-3 py-2 rounded text-sm hover:bg-ht-accent/90">Guardar</button>}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white border border-gray-200 rounded-lg p-5">
             <h2 className="font-semibold text-ht-navy mb-2">Monto estimado (neto, sin IVA)</h2>

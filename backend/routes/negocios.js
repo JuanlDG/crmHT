@@ -100,9 +100,17 @@ function puedeVer(negocio, user) {
   return user.rol === 'vendedor' && negocio.vendedor_id === user.id;
 }
 
+// Etapa del negocio en minúsculas, y fecha de facturación efectiva: la indicada, o la de cierre, o el día en que entró a la
+// etapa. Solo existe para negocios ya en Facturado o Ganado.
+const ETAPA_NOMBRE = `(SELECT lower(trim(pe_x.nombre)) FROM pipeline_etapas pe_x WHERE pe_x.id = n.etapa_id)`;
+const FECHA_FACTURACION = `(CASE WHEN ${ETAPA_NOMBRE} IN ('facturado', 'ganado')
+  THEN COALESCE(n.fecha_facturacion, n.fecha_cierre::date,
+    (SELECT h.entro_en::date FROM negocio_etapa_historial h WHERE h.negocio_id = n.id AND h.etapa_id = n.etapa_id ORDER BY h.entro_en DESC LIMIT 1))
+  END)`;
+
 // Filtros compartidos entre el listado y la exportación.
 function filtrosNegocios(query, user) {
-  const { etapa_id, vendedor_id, pipeline_id, q, desde, hasta, ot_desde, ot_hasta } = query;
+  const { etapa_id, vendedor_id, pipeline_id, q, desde, hasta, ot_desde, ot_hasta, fact_desde, fact_hasta, por_facturar } = query;
   const clauses = [];
   const params = [];
   let i = 1;
@@ -125,10 +133,16 @@ function filtrosNegocios(query, user) {
     const partes = [];
     if (ot_desde) { partes.push(`${fechaOT} >= $${i++}`); params.push(ot_desde); }
     if (ot_hasta) { partes.push(`${fechaOT} <= $${i++}`); params.push(ot_hasta); }
-    clauses.push(`(NOT EXISTS (SELECT 1 FROM ordenes_trabajo ot_f WHERE ot_f.negocio_id = n.id)
+    // Ejecutado (trabajo hecho, sin facturar) se ve siempre completo, de cualquier mes: es lo que está por facturar.
+    clauses.push(`(${ETAPA_NOMBRE} = 'ejecutado' OR NOT EXISTS (SELECT 1 FROM ordenes_trabajo ot_f WHERE ot_f.negocio_id = n.id)
       OR EXISTS (SELECT 1 FROM ordenes_trabajo ot_f WHERE ot_f.negocio_id = n.id AND ${fechaOT} IS NULL)
       OR EXISTS (SELECT 1 FROM ordenes_trabajo ot_f WHERE ot_f.negocio_id = n.id AND ${partes.join(' AND ')}))`);
   }
+  // Facturación: solo negocios ya facturados, con su fecha dentro del rango.
+  if (fact_desde) { clauses.push(`${FECHA_FACTURACION} >= $${i++}`); params.push(fact_desde); }
+  if (fact_hasta) { clauses.push(`${FECHA_FACTURACION} <= $${i++}`); params.push(fact_hasta); }
+  // Por facturar: lo ejecutado que todavía no se factura.
+  if (por_facturar === '1' || por_facturar === 'true') clauses.push(`${ETAPA_NOMBRE} = 'ejecutado'`);
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
 }
 
@@ -139,6 +153,9 @@ router.get('/', async (req, res) => {
     const negocios = await db.all(
       `SELECT n.id, n.titulo, n.etapa_id, n.pipeline_id, n.probabilidad_cierre, n.monto_estimado, n.vendedor_id,
               n.fecha_cierre_estimada, n.fecha_compromiso, n.ultima_actividad, n.created_at, n.tipo_trabajo, n.sucursal_nombre,
+              n.fecha_facturacion::text AS fecha_facturacion, ${FECHA_FACTURACION}::text AS fecha_facturacion_efectiva,
+              (SELECT ot2.fecha_programada::text FROM ordenes_trabajo ot2 WHERE ot2.negocio_id = n.id) AS fecha_programada,
+              (SELECT ot2.fecha_ejecucion::text FROM ordenes_trabajo ot2 WHERE ot2.negocio_id = n.id) AS fecha_ejecucion,
               pe.nombre AS etapa_nombre, pe.tipo AS etapa_tipo, pe.orden AS etapa_orden,
               u.nombre AS vendedor_nombre, c.nombre AS contacto_nombre, c.apellido AS contacto_apellido,
               e.razon_social AS empresa_nombre,
@@ -183,7 +200,7 @@ router.get('/exportar', authorize('administrador', 'jefe_comercial'), async (req
       `SELECT n.id, n.titulo, c.nombre AS contacto_nombre, c.apellido AS contacto_apellido,
               c.email AS contacto_email, c.telefono_e164 AS contacto_telefono,
               e.razon_social AS empresa, u.nombre AS vendedor, pe.nombre AS etapa,
-              n.probabilidad_cierre, n.monto_estimado, n.fecha_cierre_estimada, n.fecha_cierre,
+              n.probabilidad_cierre, n.monto_estimado, n.fecha_cierre_estimada, n.fecha_cierre, n.fecha_facturacion,
               ca.nombre AS causa_no_cierre, n.causa_no_cierre_detalle, n.created_at
        FROM negocios n
        JOIN contactos c ON c.id = n.contacto_id
@@ -199,10 +216,11 @@ router.get('/exportar', authorize('administrador', 'jefe_comercial'), async (req
       ...n,
       fecha_cierre_estimada: fechaDDMMAAAA(n.fecha_cierre_estimada),
       fecha_cierre: fechaDDMMAAAA(n.fecha_cierre),
+      fecha_facturacion: fechaDDMMAAAA(n.fecha_facturacion),
       created_at: fechaDDMMAAAA(n.created_at),
     }));
     const headers = ['id', 'titulo', 'contacto_nombre', 'contacto_apellido', 'contacto_email', 'contacto_telefono',
-      'empresa', 'vendedor', 'etapa', 'probabilidad_cierre', 'monto_estimado', 'fecha_cierre_estimada', 'fecha_cierre',
+      'empresa', 'vendedor', 'etapa', 'probabilidad_cierre', 'monto_estimado', 'fecha_cierre_estimada', 'fecha_cierre', 'fecha_facturacion',
       'causa_no_cierre', 'causa_no_cierre_detalle', 'created_at'];
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="negocios.csv"');
@@ -217,7 +235,7 @@ router.get('/exportar', authorize('administrador', 'jefe_comercial'), async (req
 router.get('/:id', async (req, res) => {
   try {
     const negocio = await db.get(
-      `SELECT n.*, pe.nombre AS etapa_nombre, pe.tipo AS etapa_tipo,
+      `SELECT n.*, n.fecha_facturacion::text AS fecha_facturacion, pe.nombre AS etapa_nombre, pe.tipo AS etapa_tipo,
               u.nombre AS vendedor_nombre, c.nombre AS contacto_nombre, c.apellido AS contacto_apellido,
               c.email AS contacto_email, c.telefono_e164 AS contacto_telefono,
               e.razon_social AS empresa_nombre, ca.nombre AS causa_nombre
@@ -320,7 +338,7 @@ router.put('/:id', async (req, res) => {
     if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
     if (!puedeEditar(negocio, req.user)) return res.status(403).json({ error: 'Solo el vendedor dueño puede editar' });
 
-    const { titulo, monto_estimado, empresa_id, vendedor_id, probabilidad_cierre, fecha_cierre_estimada, contacto_id, fecha_compromiso, sucursal_nombre, mantenimiento_sucursal_id } = req.body;
+    const { titulo, monto_estimado, empresa_id, vendedor_id, probabilidad_cierre, fecha_cierre_estimada, contacto_id, fecha_compromiso, sucursal_nombre, mantenimiento_sucursal_id, fecha_facturacion } = req.body;
     if (probabilidad_cierre !== undefined && probabilidad_cierre !== null &&
         (probabilidad_cierre < 0 || probabilidad_cierre > 100)) {
       return res.status(400).json({ error: 'La probabilidad debe estar entre 0 y 100' });
@@ -343,6 +361,12 @@ router.put('/:id', async (req, res) => {
        fecha_compromiso !== undefined ? (fecha_compromiso || null) : negocio.fecha_compromiso,
        req.params.id]
     );
+    // Fecha de facturación (opcional): '' o null la borra; un PUT sin el campo no la toca.
+    if (fecha_facturacion !== undefined) {
+      const f = fecha_facturacion || null;
+      if (f && !/^\d{4}-\d{2}-\d{2}$/.test(f)) return res.status(400).json({ error: 'fecha_facturacion debe ser AAAA-MM-DD' });
+      await db.run('UPDATE negocios SET fecha_facturacion = $1 WHERE id = $2', [f, negocio.id]);
+    }
     // Sucursal (opcional): se guarda aparte para que un PUT sin ese campo no la borre. Si cambió y el negocio ya tiene
     // OT, la OT se envía de nuevo a Mantenimiento.
     if (sucursal_nombre !== undefined) {
@@ -368,7 +392,7 @@ router.put('/:id', async (req, res) => {
 // para que hagan exactamente lo mismo que mover la tarjeta a mano en el
 // Pipeline. Errores de validación se lanzan con `.status` para que el caller
 // los traduzca a la respuesta HTTP.
-async function cambiarEtapaNegocio(negocioId, etapaId, { causa_no_cierre_id, causa_no_cierre_detalle, tipo_trabajo, permitirPerdidaSinCausa, horas_programadas, tecnico_ids, fecha_programada, fecha_ejecucion, horas_ejecutadas, id_fracttal } = {}, usuarioId, { sinSync = false } = {}) {
+async function cambiarEtapaNegocio(negocioId, etapaId, { causa_no_cierre_id, causa_no_cierre_detalle, tipo_trabajo, permitirPerdidaSinCausa, horas_programadas, tecnico_ids, fecha_programada, fecha_ejecucion, horas_ejecutadas, id_fracttal, fecha_facturacion } = {}, usuarioId, { sinSync = false } = {}) {
   const etapa = await db.get('SELECT * FROM pipeline_etapas WHERE id = $1', [etapaId]);
   if (!etapa) { const e = new Error('Etapa inválida'); e.status = 400; throw e; }
 
@@ -424,6 +448,11 @@ async function cambiarEtapaNegocio(negocioId, etapaId, { causa_no_cierre_id, cau
      tipo_trabajo ? tipoTrabajoFinal : negocio.tipo_trabajo,
      negocioId]
   );
+  // Fecha de facturación indicada al mover (opcional). Si no viene no se toca la que ya tenía.
+  if (fecha_facturacion !== undefined && fecha_facturacion !== null && fecha_facturacion !== '') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_facturacion)) { const e = new Error('fecha_facturacion debe ser AAAA-MM-DD'); e.status = 400; throw e; }
+    await db.run('UPDATE negocios SET fecha_facturacion = $1 WHERE id = $2', [fecha_facturacion, negocioId]);
+  }
   // Mantenimiento se entera de una OT nueva por esta vía, sin importar si
   // entró por "Aceptado" o directo a Programado/Ejecutado (aplicarEntradaAEtapa
   // también puede crearla) — se compara antes/después en vez de tocar el
@@ -1247,6 +1276,11 @@ function resolverFilaActualizacion(contexto, row, fila) {
     if (!iso) return { error: { fila, motivo: 'fecha_cierre_estimada no tiene formato DD-MM-AAAA' } };
     if (iso !== isoDb(negocio.fecha_cierre_estimada)) cambios.fecha_cierre_estimada = iso;
   }
+  if ((row.fecha_facturacion || '').trim()) {
+    const iso = parseFechaActualizar(row.fecha_facturacion);
+    if (!iso) return { error: { fila, motivo: 'fecha_facturacion no tiene formato DD-MM-AAAA' } };
+    if (iso !== isoDb(negocio.fecha_facturacion)) cambios.fecha_facturacion = iso;
+  }
   if ((row.fecha_cierre || '').trim()) {
     const iso = parseFechaActualizar(row.fecha_cierre);
     if (!iso) return { error: { fila, motivo: 'fecha_cierre no tiene formato DD-MM-AAAA' } };
@@ -1303,7 +1337,11 @@ async function aplicarFilaActualizacion(client, plan, usuarioId) {
         );
       }
     }
-  } else if (Object.keys(cambios).length) {
+  }
+  if (cambios.fecha_facturacion) {
+    await client.query('UPDATE negocios SET fecha_facturacion = $1 WHERE id = $2', [cambios.fecha_facturacion, negocio.id]);
+  }
+  if (!etapaNueva && Object.keys(cambios).some(k => k !== 'fecha_facturacion')) {
     await client.query(
       `UPDATE negocios SET titulo=COALESCE($1,titulo), monto_estimado=COALESCE($2,monto_estimado),
               fecha_cierre_estimada=COALESCE($3,fecha_cierre_estimada), fecha_cierre=COALESCE($4,fecha_cierre),

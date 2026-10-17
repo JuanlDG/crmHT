@@ -2351,6 +2351,9 @@ async function initDb() {
   // sucursal nueva que todavía no existe del otro lado).
   await db.run(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS mantenimiento_sucursal_id INTEGER`);
   await db.run(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS sucursal_nombre TEXT`);
+  // Fecha de facturación (v1.51, opcional): la indica quien mueve el negocio a Facturado. Si falta, los filtros usan la
+  // fecha de cierre y, en último caso, el día en que el negocio entró a la etapa.
+  await db.run(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS fecha_facturacion DATE`);
 
   // Configurador de materiales/herramientas estándar — solo para los tipos
   // de trabajo que se repiten siempre igual (mantenimiento preventivo,
