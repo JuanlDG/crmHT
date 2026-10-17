@@ -4,6 +4,7 @@ import api from '../../api';
 import { useAuth } from '../../contexts/AuthContext';
 import { slaEstado, ESTILO_SLA } from '../../utils/sla';
 import ModalProgramacionOT, { pideDatosOT } from '../../components/ModalProgramacionOT';
+import SelectorSucursal from '../../components/SelectorSucursal';
 
 const money = v => v ? `$${Number(v).toLocaleString('es-CL')}` : '$0';
 const TIPOS_TRABAJO = [
@@ -306,6 +307,7 @@ export default function Pipeline({ pipelineNombre = null }) {
                     <Link to={`/negocios/${n.id}`} className="block text-sm font-medium text-ht-navy hover:underline">{n.titulo}</Link>
                     <div className="text-xs text-gray-500 mt-1">{n.contacto_nombre} {n.contacto_apellido}</div>
                     {n.empresa_nombre && <div className="text-xs text-gray-400">{n.empresa_nombre}</div>}
+                    {n.sucursal_nombre && <div className="text-xs text-gray-500">Sucursal: {n.sucursal_nombre}</div>}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs font-medium text-ht-navy">{money(n.monto_estimado)}</span>
                       <span className="text-[11px] text-gray-400">{n.probabilidad_cierre ?? et.probabilidad_cierre}%</span>
@@ -421,6 +423,7 @@ function NuevoNegocio({ onClose, onCreado }) {
   const [contacto, setContacto] = useState(null);
   const [titulo, setTitulo] = useState(''); const [monto, setMonto] = useState('');
   const [fechaCompromiso, setFechaCompromiso] = useState('');
+  const [sucursal, setSucursal] = useState({ nombre: '', id: null });
   const [pipelines, setPipelines] = useState([]);
   const [pipelineId, setPipelineId] = useState(user?.pipeline_default_id || '');
   const [error, setError] = useState('');
@@ -440,6 +443,7 @@ function NuevoNegocio({ onClose, onCreado }) {
       await api.post('/negocios', {
         contacto_id: contacto.id, titulo, monto_estimado: monto || null, fecha_compromiso: fechaCompromiso || null,
         pipeline_id: pipelineId || null,
+        sucursal_nombre: sucursal.nombre || null, mantenimiento_sucursal_id: sucursal.id,
       });
       onCreado();
     } catch (err) { setError(err.response?.data?.error || 'Error al crear.'); }
@@ -485,6 +489,11 @@ function NuevoNegocio({ onClose, onCreado }) {
             className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ht-accent">
             {pipelines.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="block text-sm text-gray-700 mb-1">Sucursal (opcional)</label>
+          <SelectorSucursal key={contacto?.empresa_id || 'sin-empresa'} empresaId={contacto?.empresa_id} value={sucursal} onChange={setSucursal} />
+          <p className="text-xs text-gray-400 mt-1">Dónde se hará el trabajo. Si todavía no se sabe, se puede completar después.</p>
         </div>
         <div>
           <label className="block text-sm text-gray-700 mb-1">Monto estimado, neto sin IVA (opcional)</label>

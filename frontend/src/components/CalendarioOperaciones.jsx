@@ -14,9 +14,9 @@ function ChipOT({ ot, onAbrir, detalle = false }) {
   return (
     <button type="button" onClick={e => { e.stopPropagation(); onAbrir(ot); }}
       className={`block w-full text-left rounded px-1.5 py-0.5 text-[11px] ${claseChip(ot)} hover:ring-1 hover:ring-ht-accent`}
-      title={`${ot.ot} · ${ot.cliente || ''} · ${nombresTecnicos(ot)}`}>
+      title={`${ot.ot} · ${ot.cliente || ''}${ot.sucursal_nombre ? ' · ' + ot.sucursal_nombre : ''} · ${nombresTecnicos(ot)}`}>
       <span className="font-medium">{ot.ot}</span> {ot.cliente || ot.titulo}
-      {detalle && <span className="block text-gray-600">{[textoHorario(ot), nombresTecnicos(ot)].filter(Boolean).join(' · ')}</span>}
+      {detalle && <span className="block text-gray-600">{[ot.sucursal_nombre, textoHorario(ot), nombresTecnicos(ot)].filter(Boolean).join(' · ')}</span>}
     </button>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api';
+import SelectorSucursal from '../../components/SelectorSucursal';
 import { useAuth } from '../../contexts/AuthContext';
 
 const TIPOS_TRABAJO_LABEL = {
@@ -67,6 +68,8 @@ export default function DetalleOT() {
   const { user } = useAuth();
   const esTecnico = user?.rol === 'tecnico' && !user?.es_encargado_operaciones; // solo lectura y sin precios
   const [ot, setOt] = useState(null);
+  const [sucursal, setSucursal] = useState({ nombre: '', id: null });
+  const [msgSucursal, setMsgSucursal] = useState('');
   const [items, setItems] = useState([]);
   const [observaciones, setObservaciones] = useState('');
   const [error, setError] = useState(''); const [msg, setMsg] = useState('');
@@ -84,6 +87,14 @@ export default function DetalleOT() {
   const [mant, setMant] = useState({ hora_inicio: '', duracion_horas: '', prioridad: '', descripcion: '', avance: '' });
   const [guardandoMant, setGuardandoMant] = useState(false);
 
+  const guardarSucursal = async () => {
+    setMsgSucursal('');
+    try {
+      await api.put(`/negocios/${negocioId}`, { sucursal_nombre: sucursal.nombre || '', mantenimiento_sucursal_id: sucursal.id });
+      setMsgSucursal('Sucursal guardada.'); cargar();
+    } catch (err) { setError(err.response?.data?.error || 'No se pudo guardar la sucursal.'); }
+  };
+
   const cargar = async () => {
     try {
       const { data } = await api.get(`/ordenes-trabajo/negocio/${negocioId}`);
@@ -100,6 +111,7 @@ export default function DetalleOT() {
       setFechaEjecucion(data.fecha_ejecucion || '');
       setHorasEjecutadas(data.horas_ejecutadas ? String(Number(data.horas_ejecutadas)) : '');
       setIdFracttal(data.id_fracttal || '');
+      setSucursal({ nombre: data.sucursal_nombre || '', id: data.mantenimiento_sucursal_id ?? null });
       const d = data.mant_datos || {};
       setMant({
         hora_inicio: d.hora_inicio || '', duracion_horas: d.hora_inicio && data.horas_programadas ? String(Math.round(Number(data.horas_programadas))) : '',
@@ -208,6 +220,18 @@ export default function DetalleOT() {
           <div><dt className="text-xs text-gray-500">Negocio</dt><dd className="text-ht-navy">{ot.negocio_titulo}</dd></div>
           <div><dt className="text-xs text-gray-500">Tipo de trabajo</dt><dd className="text-ht-navy">{TIPOS_TRABAJO_LABEL[ot.tipo_trabajo] || ot.tipo_trabajo}</dd></div>
           <div><dt className="text-xs text-gray-500">Cliente</dt><dd className="text-ht-navy">{ot.empresa_nombre || `${ot.contacto_nombre} ${ot.contacto_apellido || ''}`.trim()}</dd></div>
+          <div className="col-span-2">
+            <dt className="text-xs text-gray-500 mb-1">Sucursal</dt>
+            <dd>
+              {ot.puede_editar ? (
+                <div className="flex items-start gap-2">
+                  <div className="flex-1"><SelectorSucursal key={ot.empresa_id || 'sin-empresa'} empresaId={ot.empresa_id} value={sucursal} onChange={setSucursal} /></div>
+                  <button type="button" onClick={guardarSucursal} className="bg-ht-accent text-ht-navy px-3 py-2 rounded text-sm hover:bg-ht-accent/90">Guardar</button>
+                </div>
+              ) : <span className="text-ht-navy">{ot.sucursal_nombre || '—'}</span>}
+              {msgSucursal && <p className="text-xs text-gray-500 mt-1">{msgSucursal}</p>}
+            </dd>
+          </div>
           <div><dt className="text-xs text-gray-500">Ítems prellenados desde</dt><dd className="text-ht-navy">{ORIGEN_ITEMS_LABEL[ot.origen_items] || ot.origen_items}</dd></div>
         </dl>
       </div>

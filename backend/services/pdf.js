@@ -105,6 +105,7 @@ async function generarCotizacionPDF(data, stream) {
     doc.text(texto, M, yc, { width: 260 });
     yc += Math.max(12, altura + 2);
   };
+  if (cliente.sucursal) lineaCliente(`Sucursal: ${cliente.sucursal}`);
   if (cliente.empresa_direccion) lineaCliente(`${cliente.empresa_direccion}${cliente.empresa_comuna ? ', ' + cliente.empresa_comuna : ''}`);
   if (cliente.empresa_rut) lineaCliente(`RUT: ${cliente.empresa_rut}`);
   lineaCliente(`Contacto: ${cliente.contacto_nombre || ''} ${cliente.contacto_apellido || ''}`.trim());
@@ -293,6 +294,7 @@ async function generarOTPDF(data, stream) {
     doc.text(texto, M, yc, { width: 260 });
     yc += Math.max(12, altura + 2);
   };
+  if (cliente.sucursal) lineaCliente(`Sucursal: ${cliente.sucursal}`);
   if (cliente.empresa_direccion) lineaCliente(`${cliente.empresa_direccion}${cliente.empresa_comuna ? ', ' + cliente.empresa_comuna : ''}`);
   lineaCliente(`Contacto: ${cliente.contacto_nombre || ''} ${cliente.contacto_apellido || ''}`.trim());
   if (cliente.contacto_email) lineaCliente(cliente.contacto_email);

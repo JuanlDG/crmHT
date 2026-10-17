@@ -151,7 +151,7 @@ router.get('/calendario', async (req, res) => {
 
     const fechaOT = 'COALESCE(o.fecha_programada, o.fecha_ejecucion)';
     const filas = await db.all(
-      `SELECT o.id AS ot_id, o.negocio_id, 'OT-' || o.negocio_id AS ot, n.titulo, n.tipo_trabajo,
+      `SELECT o.id AS ot_id, o.negocio_id, 'OT-' || o.negocio_id AS ot, n.titulo, n.tipo_trabajo, n.sucursal_nombre,
               e.razon_social AS cliente, pe.nombre AS etapa,
               ${fechaOT}::text AS fecha, o.horas_programadas::float8 AS horas_programadas,
               o.mant_datos->>'hora_inicio' AS hora_inicio, o.mant_datos->'tecnico' AS tecnico_mant

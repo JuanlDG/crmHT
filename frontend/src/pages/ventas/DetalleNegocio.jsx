@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../api';
+import SelectorSucursal from '../../components/SelectorSucursal';
 import { useAuth } from '../../contexts/AuthContext';
 import NotasYTareas from '../../components/NotasYTareas';
 import SeguimientoNegocio from '../../components/SeguimientoNegocio';
@@ -33,6 +34,7 @@ export default function DetalleNegocio() {
   const [error, setError] = useState('');
   const [prob, setProb] = useState('');
   const [monto, setMonto] = useState('');
+  const [sucursal, setSucursal] = useState({ nombre: '', id: null });
   const [fechaEstimada, setFechaEstimada] = useState('');
   const [fechaCompromiso, setFechaCompromiso] = useState('');
   const [modalPerdido, setModalPerdido] = useState(null); // etapa perdida
@@ -51,6 +53,7 @@ export default function DetalleNegocio() {
     try {
       const { data } = await api.get(`/negocios/${id}`); setN(data); setProb(data.probabilidad_cierre ?? '');
       setMonto(data.monto_estimado ?? '');
+      setSucursal({ nombre: data.sucursal_nombre || '', id: data.mantenimiento_sucursal_id ?? null });
       setFechaEstimada(data.fecha_cierre_estimada ? data.fecha_cierre_estimada.slice(0, 10) : '');
       setFechaCompromiso(data.fecha_compromiso ? data.fecha_compromiso.slice(0, 10) : '');
       setContactoNombre(`${data.contacto_nombre} ${data.contacto_apellido || ''}`.trim());
@@ -76,6 +79,11 @@ export default function DetalleNegocio() {
   const cambiarEtapa = async (etapa, extra = {}) => {
     try { await api.put(`/negocios/${id}/etapa`, { etapa_id: etapa.id, ...extra }); cargar(); }
     catch (err) { setError(err.response?.data?.error || 'No se pudo cambiar la etapa.'); }
+  };
+
+  const guardarSucursal = async () => {
+    try { await api.put(`/negocios/${id}`, { sucursal_nombre: sucursal.nombre || '', mantenimiento_sucursal_id: sucursal.id }); cargar(); }
+    catch (err) { setError(err.response?.data?.error || 'No se pudo guardar la sucursal.'); }
   };
 
   const guardarMonto = async () => {
@@ -273,6 +281,17 @@ export default function DetalleNegocio() {
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <h2 className="font-semibold text-ht-navy mb-2">Sucursal</h2>
+            <p className="text-xs text-gray-500 mb-2">Dónde se hará el trabajo. Aparece en la cotización, en la OT y en el calendario de Operaciones.</p>
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <SelectorSucursal key={n.empresa_id || 'sin-empresa'} empresaId={n.empresa_id} value={sucursal} onChange={setSucursal} disabled={!n.puede_editar} />
+              </div>
+              {n.puede_editar && <button onClick={guardarSucursal} className="bg-ht-accent text-ht-navy px-3 py-2 rounded text-sm hover:bg-ht-accent/90">Guardar</button>}
+            </div>
           </div>
 
           <div className="bg-white border border-gray-200 rounded-lg p-5">

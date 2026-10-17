@@ -4,7 +4,7 @@ const { db } = require('../db');
 async function fetchCompleta({ id, token }) {
   const where = id ? 'c.id = $1' : 'c.token_publico = $1';
   const cot = await db.get(
-    `SELECT c.*, n.titulo AS negocio_titulo, n.vendedor_id,
+    `SELECT c.*, n.titulo AS negocio_titulo, n.vendedor_id, n.sucursal_nombre,
             ct.id AS contacto_id, ct.nombre AS contacto_nombre, ct.apellido AS contacto_apellido, ct.email AS contacto_email,
             ct.cargo AS contacto_cargo, ct.telefono_e164 AS contacto_telefono,
             e.razon_social AS empresa_nombre, e.rut AS empresa_rut, e.direccion AS empresa_direccion,
@@ -33,7 +33,7 @@ async function fetchCompleta({ id, token }) {
     cliente: {
       contacto_id: cot.contacto_id, contacto_nombre: cot.contacto_nombre, contacto_apellido: cot.contacto_apellido,
       contacto_email: cot.contacto_email, contacto_cargo: cot.contacto_cargo, contacto_telefono: cot.contacto_telefono,
-      empresa_nombre: cot.empresa_nombre, empresa_rut: cot.empresa_rut,
+      empresa_nombre: cot.empresa_nombre, empresa_rut: cot.empresa_rut, sucursal: cot.sucursal_nombre || null,
       empresa_direccion: cot.empresa_direccion, empresa_comuna: cot.empresa_comuna, empresa_giro: cot.empresa_giro,
     },
     vendedor: { nombre: cot.vendedor_nombre, email: cot.vendedor_email },

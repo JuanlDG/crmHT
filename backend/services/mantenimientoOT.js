@@ -107,6 +107,27 @@ async function buscarSucursalesEnMantenimiento(rut) {
   }
 }
 
+// Crea una sucursal nueva de un cliente en Mantenimiento (donde vive el catálogo). Idempotente del otro lado: si ya
+// existe con ese nombre devuelve la existente. Devuelve null si Mantenimiento no está configurado o no responde: quien
+// llama sigue con el nombre como texto libre y la sucursal se crea sola cuando la OT se sincroniza.
+async function crearSucursalEnMantenimiento({ rut, nombre, direccion, razon_social }) {
+  const url = process.env.MANTENIMIENTO_API_URL;
+  const key = process.env.MANTENIMIENTO_API_KEY_SALIENTE;
+  if (!url || !key || !rut || !nombre) return null;
+  try {
+    const resp = await fetch(`${url}/integraciones/crm/sucursales`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rut, nombre, direccion: direccion || null, razon_social: razon_social || null }),
+    });
+    if (!resp.ok) { console.error(`[mantenimientoOT] POST sucursales respondió HTTP ${resp.status}`); return null; }
+    return await resp.json();
+  } catch (err) {
+    console.error('[mantenimientoOT] Error al crear la sucursal en Mantenimiento', err);
+    return null;
+  }
+}
+
 // PATCH .../programacion y .../ejecucion (llamados por Mantenimiento). Mueve
 // la etapa real del negocio — mismo camino que el kanban manual — y de paso
 // marca la OT como gestionada por Mantenimiento la primera vez (ver
@@ -221,6 +242,7 @@ async function notificarOTCreada(negocioId) {
 module.exports = {
   obtenerOTParaMantenimiento,
   buscarSucursalesEnMantenimiento,
+  crearSucursalEnMantenimiento,
   registrarEtapaDesdeMantenimiento,
   crearNegocioDesdeMantenimiento,
   notificarOTCreada,

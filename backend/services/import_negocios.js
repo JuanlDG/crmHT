@@ -2,7 +2,7 @@
 // del pipeline "Operaciones" (por defecto "Aceptado" si la fila no indica
 // otra), sin cotización asociada (O/C de Cencosud, Sodimac, etc. contra un
 // contrato ya firmado).
-// Plantilla: empresa, rut_empresa, contacto_nombre, contacto_apellido, contacto_email, contacto_telefono, titulo, estado, tipo_trabajo, n_oc, monto, fecha_cierre, vendedor, horas_programadas, tecnicos, fecha_programada, fecha_ejecucion, horas_ejecutadas, id_fracttal
+// Plantilla: empresa, rut_empresa, contacto_nombre, contacto_apellido, contacto_email, contacto_telefono, titulo, estado, tipo_trabajo, n_oc, monto, fecha_cierre, vendedor, horas_programadas, tecnicos, fecha_programada, fecha_ejecucion, horas_ejecutadas, id_fracttal, sucursal
 const { normalizarTelefono } = require('./dedup');
 const { validarRut, normalizarRut, validarEmail } = require('../utils/validaciones');
 const { ETAPAS_OT, faltantesParaEtapa } = require('./ot');
@@ -33,12 +33,14 @@ const MAPA = {
   'fecha_ejecucion': 'fecha_ejecucion', 'fecha ejecucion': 'fecha_ejecucion', 'fecha ejecución': 'fecha_ejecucion',
   'fecha_ejecución': 'fecha_ejecucion',
   'id_fracttal': 'id_fracttal', 'id fracttal': 'id_fracttal', 'fracttal': 'id_fracttal',
+  // Sucursal del trabajo (v1.50): nombre tal como está en Mantenimiento; si no existe allá, se crea al sincronizar.
+  'sucursal': 'sucursal', 'sucursal_nombre': 'sucursal',
 };
 
 const PLANTILLA_HEADERS = [
   'empresa', 'rut_empresa', 'contacto_nombre', 'contacto_apellido', 'contacto_email',
   'contacto_telefono', 'titulo', 'estado', 'tipo_trabajo', 'n_oc', 'monto', 'fecha_cierre', 'vendedor',
-  'horas_programadas', 'tecnicos', 'fecha_programada', 'fecha_ejecucion', 'horas_ejecutadas', 'id_fracttal',
+  'horas_programadas', 'tecnicos', 'fecha_programada', 'fecha_ejecucion', 'horas_ejecutadas', 'id_fracttal', 'sucursal',
 ];
 
 // Mismos 5 valores que el CHECK de negocios.tipo_trabajo en db.js. Exportado

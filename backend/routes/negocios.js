@@ -35,11 +35,46 @@ router.use(async (req, res, next) => {
 // CRM no mantiene su propia copia, ver nota en db.js sobre
 // negocios.mantenimiento_sucursal_id). Para que el vendedor elija una al
 // crear/editar el negocio.
+// Acepta `rut` o `empresa_id` (el formulario conoce la empresa, no siempre su RUT). Sin RUT, o con Mantenimiento caído,
+// devuelve [] y la pantalla deja escribir la sucursal a mano.
+async function rutDeEmpresa(query) {
+  const rut = (query.rut || '').trim();
+  if (rut) return rut;
+  if (!/^\d+$/.test(String(query.empresa_id || ''))) return '';
+  const e = await db.get('SELECT rut FROM empresas WHERE id = $1', [query.empresa_id]);
+  return (e?.rut || '').trim();
+}
 router.get('/sucursales-sugeridas', async (req, res) => {
-  const rut = (req.query.rut || '').trim();
-  if (!rut) return res.json([]);
-  const sucursales = await mantenimientoOT.buscarSucursalesEnMantenimiento(rut);
-  res.json(sucursales);
+  try {
+    const rut = await rutDeEmpresa(req.query);
+    if (!rut) return res.json([]);
+    res.json(await mantenimientoOT.buscarSucursalesEnMantenimiento(rut));
+  } catch (err) {
+    console.error('[negocios/GET /sucursales-sugeridas]', err);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+// POST /api/negocios/sucursales { empresa_id, nombre, direccion? } — sucursal nueva de un cliente. Se crea en
+// Mantenimiento (ahí vive el catálogo). Si no responde, se devuelve igual el nombre con pendiente: true: el negocio la
+// guarda como texto y Mantenimiento la crea al sincronizar la OT. Cualquier usuario del CRM que pueda editar negocios.
+router.post('/sucursales', authorize('administrador', 'jefe_comercial', 'vendedor', 'callcenter'), async (req, res) => {
+  try {
+    const nombre = String(req.body.nombre || '').split(/\s+/).filter(Boolean).join(' ');
+    if (!nombre) return res.status(400).json({ error: 'El nombre de la sucursal es obligatorio' });
+    if (!/^\d+$/.test(String(req.body.empresa_id || ''))) return res.status(400).json({ error: 'empresa_id inválido' });
+    const empresa = await db.get('SELECT razon_social, rut FROM empresas WHERE id = $1', [req.body.empresa_id]);
+    if (!empresa) return res.status(404).json({ error: 'Empresa no encontrada' });
+    const creada = empresa.rut ? await mantenimientoOT.crearSucursalEnMantenimiento({
+      rut: empresa.rut, nombre, direccion: req.body.direccion, razon_social: empresa.razon_social,
+    }) : null;
+    res.status(creada ? 201 : 200).json(creada
+      ? { id: creada.id, nombre: creada.nombre, direccion: creada.direccion, pendiente: false }
+      : { id: null, nombre, direccion: req.body.direccion || null, pendiente: true });
+  } catch (err) {
+    console.error('[negocios/POST /sucursales]', err);
+    res.status(500).json({ error: 'Error interno' });
+  }
 });
 
 // Perfil Operaciones (es_encargado_operaciones): ve y edita los negocios del
@@ -49,6 +84,9 @@ function esOperacionesDe(negocio, user) {
   return user.es_encargado_operaciones === true && user.pipeline_operaciones_id != null
     && Number(negocio.pipeline_id) === Number(user.pipeline_operaciones_id);
 }
+
+// Nombre de sucursal normalizado (espacios) o null si viene vacío.
+const limpiarSucursal = v => (v == null ? null : (String(v).split(/\s+/).filter(Boolean).join(' ').slice(0, 255) || null));
 
 function puedeEditar(negocio, user) {
   return user.rol === 'administrador' || user.rol === 'jefe_comercial' || negocio.vendedor_id === user.id || esOperacionesDe(negocio, user);
@@ -100,7 +138,7 @@ router.get('/', async (req, res) => {
     const { where, params } = filtrosNegocios(req.query, req.user);
     const negocios = await db.all(
       `SELECT n.id, n.titulo, n.etapa_id, n.pipeline_id, n.probabilidad_cierre, n.monto_estimado, n.vendedor_id,
-              n.fecha_cierre_estimada, n.fecha_compromiso, n.ultima_actividad, n.created_at, n.tipo_trabajo,
+              n.fecha_cierre_estimada, n.fecha_compromiso, n.ultima_actividad, n.created_at, n.tipo_trabajo, n.sucursal_nombre,
               pe.nombre AS etapa_nombre, pe.tipo AS etapa_tipo, pe.orden AS etapa_orden,
               u.nombre AS vendedor_nombre, c.nombre AS contacto_nombre, c.apellido AS contacto_apellido,
               e.razon_social AS empresa_nombre,
@@ -121,6 +159,13 @@ router.get('/', async (req, res) => {
     if (alertasOT.length) {
       const porNegocio = new Map(alertasOT.map(a => [a.negocio_id, a.alertas]));
       for (const n of negocios) { const a = porNegocio.get(n.id); if (a) n.ot_alertas = a; }
+    }
+    // Sin sucursal (no bloquea nada): negocios de Operaciones que ya son un trabajo (Aceptado o Programado).
+    for (const n of negocios) {
+      const etapa = String(n.etapa_nombre || '').trim().toLowerCase();
+      if (n.tiene_ot && (etapa === 'aceptado' || etapa === 'programado') && !n.sucursal_nombre) {
+        n.ot_alertas = [...(n.ot_alertas || []), 'Sin sucursal'];
+      }
     }
 
     res.json(negocios);
@@ -203,7 +248,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/negocios
 router.post('/', authorize('administrador', 'jefe_comercial', 'vendedor', 'callcenter'), async (req, res) => {
   try {
-    const { contacto_id, titulo, empresa_id, monto_estimado, vendedor_id, fecha_cierre_estimada, fecha_compromiso, pipeline_id, tipo_trabajo } = req.body;
+    const { contacto_id, titulo, empresa_id, monto_estimado, vendedor_id, fecha_cierre_estimada, fecha_compromiso, pipeline_id, tipo_trabajo, sucursal_nombre, mantenimiento_sucursal_id } = req.body;
     if (!contacto_id || !titulo) return res.status(400).json({ error: 'Contacto y título requeridos' });
 
     const contacto = await db.get('SELECT id, empresa_id FROM contactos WHERE id = $1', [contacto_id]);
@@ -242,11 +287,12 @@ router.post('/', authorize('administrador', 'jefe_comercial', 'vendedor', 'callc
     }
 
     const r = await db.run(
-      `INSERT INTO negocios (contacto_id, empresa_id, vendedor_id, titulo, monto_estimado, etapa_id, probabilidad_cierre, fecha_cierre_estimada, pipeline_id, fecha_compromiso, tipo_trabajo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      `INSERT INTO negocios (contacto_id, empresa_id, vendedor_id, titulo, monto_estimado, etapa_id, probabilidad_cierre, fecha_cierre_estimada, pipeline_id, fecha_compromiso, tipo_trabajo, sucursal_nombre, mantenimiento_sucursal_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [contacto_id, emp, dueno, titulo, monto_estimado || null,
        etapaInicial ? etapaInicial.id : null, etapaInicial ? etapaInicial.probabilidad_cierre : null,
-       fecha_cierre_estimada || null, pipelineId, fecha_compromiso || null, entraAAceptado ? tipo_trabajo : null]
+       fecha_cierre_estimada || null, pipelineId, fecha_compromiso || null, entraAAceptado ? tipo_trabajo : null,
+       limpiarSucursal(sucursal_nombre), Number.isInteger(mantenimiento_sucursal_id) ? mantenimiento_sucursal_id : null]
     );
     const negocio = r.rows[0];
     if (etapaInicial) {
@@ -274,7 +320,7 @@ router.put('/:id', async (req, res) => {
     if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
     if (!puedeEditar(negocio, req.user)) return res.status(403).json({ error: 'Solo el vendedor dueño puede editar' });
 
-    const { titulo, monto_estimado, empresa_id, vendedor_id, probabilidad_cierre, fecha_cierre_estimada, contacto_id, fecha_compromiso } = req.body;
+    const { titulo, monto_estimado, empresa_id, vendedor_id, probabilidad_cierre, fecha_cierre_estimada, contacto_id, fecha_compromiso, sucursal_nombre, mantenimiento_sucursal_id } = req.body;
     if (probabilidad_cierre !== undefined && probabilidad_cierre !== null &&
         (probabilidad_cierre < 0 || probabilidad_cierre > 100)) {
       return res.status(400).json({ error: 'La probabilidad debe estar entre 0 y 100' });
@@ -297,6 +343,16 @@ router.put('/:id', async (req, res) => {
        fecha_compromiso !== undefined ? (fecha_compromiso || null) : negocio.fecha_compromiso,
        req.params.id]
     );
+    // Sucursal (opcional): se guarda aparte para que un PUT sin ese campo no la borre. Si cambió y el negocio ya tiene
+    // OT, la OT se envía de nuevo a Mantenimiento.
+    if (sucursal_nombre !== undefined) {
+      const nueva = limpiarSucursal(sucursal_nombre);
+      const nuevaId = nueva && Number.isInteger(mantenimiento_sucursal_id) ? mantenimiento_sucursal_id : null;
+      if (nueva !== negocio.sucursal_nombre || nuevaId !== (negocio.mantenimiento_sucursal_id ?? null)) {
+        await db.run('UPDATE negocios SET sucursal_nombre = $1, mantenimiento_sucursal_id = $2 WHERE id = $3', [nueva, nuevaId, negocio.id]);
+        await mantenimientoSync.marcarCambio(negocio.id);
+      }
+    }
     res.json({ message: 'Negocio actualizado' });
   } catch (err) {
     console.error('[negocios/PUT /:id]', err);
@@ -977,9 +1033,9 @@ router.post('/importar/confirmar', authorize(...PUEDE_IMPORTAR_NEGOCIOS), upload
       const fechaCierreEstimada = esCerrada ? null : (n.fecha_cierre || null);
 
       const r = await client.query(
-        `INSERT INTO negocios (contacto_id, empresa_id, vendedor_id, titulo, monto_estimado, etapa_id, probabilidad_cierre, fecha_cierre, fecha_cierre_estimada, pipeline_id, n_oc, tipo_trabajo)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-        [contactoId, empresaId, vendedorId, n.titulo, n.monto, etapa.id, etapa.probabilidad_cierre, fechaCierre, fechaCierreEstimada, pipelineId, n.n_oc || null, n.tipo_trabajo || null]
+        `INSERT INTO negocios (contacto_id, empresa_id, vendedor_id, titulo, monto_estimado, etapa_id, probabilidad_cierre, fecha_cierre, fecha_cierre_estimada, pipeline_id, n_oc, tipo_trabajo, sucursal_nombre)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+        [contactoId, empresaId, vendedorId, n.titulo, n.monto, etapa.id, etapa.probabilidad_cierre, fechaCierre, fechaCierreEstimada, pipelineId, n.n_oc || null, n.tipo_trabajo || null, limpiarSucursal(n.sucursal)]
       );
       const negocioId = r.rows[0].id;
       await client.query('INSERT INTO negocio_etapa_historial (negocio_id, etapa_id) VALUES ($1,$2)', [negocioId, etapa.id]);
