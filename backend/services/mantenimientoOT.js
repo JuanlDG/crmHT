@@ -188,7 +188,9 @@ async function crearNegocioDesdeMantenimiento({ referencia_externa, titulo, tipo
   )).rows[0];
   await db.run('INSERT INTO negocio_etapa_historial (negocio_id, etapa_id) VALUES ($1,$2)', [negocio.id, etapaAceptado.id]);
   await otService.crearOTSiNoExiste({ id: negocio.id, tipo_trabajo: tipoTrabajo }, db, usuarioId);
-  await db.run('UPDATE ordenes_trabajo SET mantenimiento_gestiona = true WHERE negocio_id = $1', [negocio.id]);
+  // sync_actualizado_en = NULL: la primera foto que mande Mantenimiento (con su hora de cambio, anterior a
+  // este registro) debe aplicarse siempre.
+  await db.run('UPDATE ordenes_trabajo SET mantenimiento_gestiona = true, sync_actualizado_en = NULL WHERE negocio_id = $1', [negocio.id]);
 
   return { negocio_id: negocio.id };
 }
@@ -199,7 +201,7 @@ async function notificarOTCreada(negocioId) {
   const url = process.env.MANTENIMIENTO_WEBHOOK_URL;
   if (!url) return;
   try {
-    const payload = await obtenerOTParaMantenimiento(negocioId);
+    const payload = await require('./mantenimientoSync').construirFoto(negocioId);
     if (!payload) return;
     const body = JSON.stringify({ evento: 'ot_creada', ot: payload });
     const headers = { 'Content-Type': 'application/json' };

@@ -9,6 +9,7 @@ const { generarOTPDF } = require('../services/pdf');
 const otSvc = require('../services/ot');
 const { cargarOTCompleta } = otSvc;
 const timeline = require('../services/timeline');
+const mantenimientoSync = require('../services/mantenimientoSync');
 
 router.use(authenticate);
 
@@ -142,8 +143,11 @@ router.get('/negocio/:negocioId', async (req, res) => {
     const completa = await cargarOTCompleta('o.negocio_id', req.params.negocioId);
     if (!completa) return res.status(404).json({ error: 'Este negocio todavía no tiene Orden de Trabajo (se genera al entrar a "Aceptado")' });
     const [alerta] = await otSvc.negociosConAlertas([negocio.id]);
+    const cola = await db.get('SELECT intentos, ultimo_error FROM mantenimiento_outbox WHERE negocio_id = $1', [negocio.id]);
     res.json({
       ...completa.ot, numero: `OT-${completa.ot.negocio_id}`, tecnicos: completa.tecnicos, alertas: alerta ? alerta.alertas : [],
+      mantenimiento_estado: await mantenimientoSync.estadoDeNegocio(negocio.id),
+      mantenimiento_sync: cola ? { pendiente: true, intentos: cola.intentos, ultimo_error: cola.ultimo_error } : { pendiente: false },
       items: req.user.rol === 'tecnico' ? sinPrecios(completa.items) : completa.items,
       puede_editar: puedeEditar(negocio, req.user),
     });
@@ -189,10 +193,42 @@ router.put('/:id/programacion', async (req, res) => {
         });
       }
     }
+    await mantenimientoSync.marcarCambio(negocio.id);
     res.json({ message: 'Programación de la OT actualizada' });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error('[ordenes_trabajo/PUT /:id/programacion]', err);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+// PUT /api/ordenes-trabajo/:id/mantenimiento — edita desde el CRM los datos que
+// también existen en Mantenimiento (hora de inicio, duración, prioridad,
+// descripción, avance, estado...). Primero se le avisa a Mantenimiento: si
+// rechaza el cambio (p. ej. una hora fuera de su jornada) no se guarda nada.
+// Solo se tocan las claves que vienen en el body.
+const CAMPOS_PANEL_MANT = ['fecha_programada', 'fecha_ejecucion', 'observaciones', 'hora_inicio', 'duracion_horas', 'prioridad', 'descripcion', 'avance', 'estado', 'clasificacion_1', 'clasificacion_2'];
+router.put('/:id/mantenimiento', async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'Orden de Trabajo no encontrada' });
+  try {
+    const negocio = await negocioDeOT(req.params.id);
+    if (!negocio) return res.status(404).json({ error: 'Orden de Trabajo no encontrada' });
+    if (!puedeEditar(negocio, req.user)) return res.status(403).json({ error: 'Solo el vendedor dueño puede editar' });
+    const cambios = {};
+    for (const campo of CAMPOS_PANEL_MANT) if (Object.prototype.hasOwnProperty.call(req.body, campo)) cambios[campo] = req.body[campo];
+    if (cambios.avance !== undefined && cambios.avance !== null && (!Number.isInteger(Number(cambios.avance)) || Number(cambios.avance) < 0 || Number(cambios.avance) > 100)) {
+      return res.status(400).json({ error: 'El avance debe ser un número entre 0 y 100' });
+    }
+    if (cambios.duracion_horas !== undefined && cambios.duracion_horas !== null && cambios.duracion_horas !== '') cambios.duracion_horas = Number(cambios.duracion_horas);
+    if (cambios.avance !== undefined && cambios.avance !== null) cambios.avance = Number(cambios.avance);
+    if (cambios.estado !== undefined && !['aceptado', 'programado', 'ejecutado'].includes(cambios.estado)) {
+      return res.status(400).json({ error: 'Estado inválido' });
+    }
+    const r = await mantenimientoSync.editarDesdeCrm(negocio.id, cambios, req.user.id);
+    res.json({ message: r.pendiente_envio ? 'Guardado. Mantenimiento no respondió: se le enviará en cuanto vuelva.' : 'Guardado y enviado a Mantenimiento.', ...r });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('[ordenes_trabajo/PUT /:id/mantenimiento]', err);
     res.status(500).json({ error: 'Error interno' });
   }
 });
@@ -235,6 +271,7 @@ router.put('/:id/items', async (req, res) => {
       );
     }
     await client.query('COMMIT');
+    await mantenimientoSync.marcarCambio(negocio.id);
     res.json({ message: 'Orden de Trabajo actualizada' });
   } catch (err) {
     await client.query('ROLLBACK');

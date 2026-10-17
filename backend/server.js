@@ -139,6 +139,9 @@ if (require.main === module) {
       app.listen(PORT, () => {
         console.log(`[Server] CRM HidroTecnica corriendo en http://localhost:${PORT}`);
       });
+      // Sincronización de la OT con Mantenimiento (v1.48): vacía la cola de salida cada 5 segundos
+      // y al instante cuando una OT cambia (ver services/mantenimientoSync.js).
+      require('./services/mantenimientoSync').iniciarWorker();
       // Motor de secuencias: revisa pasos vencidos cada 15 minutos (HT-AP-03 §7.4).
       const QUINCE_MIN = 15 * 60 * 1000;
       setInterval(() => {

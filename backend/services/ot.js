@@ -67,7 +67,7 @@ async function crearOTSiNoExiste(negocio, client = db, creadoPorId = null) {
 
   const ot = await ejecutar(
     client,
-    'INSERT INTO ordenes_trabajo (negocio_id, origen_items, creado_por_id) VALUES ($1,$2,$3) RETURNING id',
+    'INSERT INTO ordenes_trabajo (negocio_id, origen_items, creado_por_id, sync_actualizado_en) VALUES ($1,$2,$3, clock_timestamp()) RETURNING id',
     [negocio.id, origenItems, creadoPorId]
   );
   const otId = ot.rows[0].id;
